@@ -53,6 +53,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <div>{copy.roles[user.role]}</div>
                 </div>
               ) : (
+                {/* API route, not a page — Link prefetch would break the OAuth redirect */}
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                 <a
                   href="/api/auth/signin"
                   className="block rounded-lg bg-zinc-900 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
