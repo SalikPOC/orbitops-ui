@@ -7,8 +7,21 @@ import { fixturePipeline, fixtureHistory, fixturePromotions } from "../../fixtur
 
 const WORK_ITEM_RE = /\b[A-Z][A-Z0-9]+-\d+\b|\bAB#\d+\b/g;
 
-export async function getPipeline(): Promise<Stage[]> {
-  if (MOCK) return fixturePipeline;
+interface PipelineConfig {
+  pipeline: Stage[];
+  devOrgs?: { name: string; org: string; authMethod: string }[];
+}
+
+async function getConfig(): Promise<PipelineConfig> {
+  if (MOCK) {
+    return {
+      pipeline: fixturePipeline,
+      devOrgs: [
+        { name: "Shared dev org (also INT)", org: "INT", authMethod: "sfdx-url" },
+        { name: "Demo dev sandbox", org: "DEV_DEMO", authMethod: "sfdx-url" },
+      ],
+    };
+  }
   const gh = await getOctokit();
   const res = await gh.rest.repos.getContent({
     owner: REPO_OWNER,
@@ -16,7 +29,19 @@ export async function getPipeline(): Promise<Stage[]> {
     path: ".orbitops/pipeline.yml",
   });
   const content = Buffer.from((res.data as { content: string }).content, "base64").toString("utf8");
-  return (yamlLoad(content) as { pipeline: Stage[] }).pipeline;
+  return yamlLoad(content) as PipelineConfig;
+}
+
+export async function getPipeline(): Promise<Stage[]> {
+  return (await getConfig()).pipeline;
+}
+
+/** Orgs a builder can pull changes from: registered devOrgs, else the first stage's org. */
+export async function getSourceOrgs(): Promise<{ key: string; label: string }[]> {
+  const cfg = await getConfig();
+  if (cfg.devOrgs?.length) return cfg.devOrgs.map((d) => ({ key: d.org, label: d.name }));
+  const first = cfg.pipeline[0];
+  return first ? [{ key: first.org, label: `${first.environment} org` }] : [];
 }
 
 export async function getDeployHistory(env: string): Promise<DeployManifest[]> {

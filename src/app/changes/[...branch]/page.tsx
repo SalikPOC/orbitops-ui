@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { copy } from "@/lib/copy";
-import { getPipeline, getPromotionFiles } from "@/lib/data";
+import { getPipeline, getPromotionFiles, getSourceOrgs } from "@/lib/data";
 import { summarizeMetadataPath } from "@/lib/metadata-summary";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { WorkItemBadge } from "@/components/chips";
@@ -14,9 +14,8 @@ export default async function ChangePage({ params }: { params: Promise<{ branch:
   const headBranch = branch.map(decodeURIComponent).join("/");
   if (!headBranch.startsWith("feature/")) notFound();
 
-  const stages = await getPipeline();
+  const [stages, sourceOrgs] = await Promise.all([getPipeline(), getSourceOrgs()]);
   const baseBranch = stages[0]?.branch ?? "integration"; // changes are built against the first stage
-  const stage = stages[0];
   const files = await getPromotionFiles(baseBranch, headBranch);
 
   const workItems = [...new Set(headBranch.match(/[A-Z][A-Z0-9]+-\d+|AB#\d+/g) ?? [])];
@@ -44,7 +43,7 @@ export default async function ChangePage({ params }: { params: Promise<{ branch:
         files={files.map((f) => ({ ...f, summary: summarizeMetadataPath(f.filename, f.status) }))}
         headBranch={headBranch}
         baseBranch={baseBranch}
-        sourceEnv={stage?.environment ?? "integration"}
+        sourceOrgs={sourceOrgs}
         prNumber={0}
         conflicted={false}
       />

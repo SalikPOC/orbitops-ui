@@ -76,6 +76,7 @@ export const copy = {
     askForHelp: "Ask a developer for help",
     inProgress: "Being built",
     beingBuilt: "Changes being built",
+    fromOrg: "Pull from which org",
     updates: (n: number) => (n === 0 ? "Nothing pulled in yet" : `${n} update${n === 1 ? "" : "s"} pulled in`),
   },
 

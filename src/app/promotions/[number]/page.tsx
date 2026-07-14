@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { marked } from "marked";
 import { copy } from "@/lib/copy";
-import { getPipeline, getPromotion, getPromotionFiles, getStickyComment } from "@/lib/data";
+import { getPipeline, getPromotion, getPromotionFiles, getSourceOrgs, getStickyComment } from "@/lib/data";
 import { summarizeMetadataPath } from "@/lib/metadata-summary";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Chip, WorkItemBadge } from "@/components/chips";
@@ -17,9 +17,10 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
   if (!promotion) notFound();
 
   const stage = stages.find((s) => s.branch === promotion.baseBranch);
-  const [preview, files] = await Promise.all([
+  const [preview, files, sourceOrgs] = await Promise.all([
     getStickyComment(prNumber, "orbitops:deploy-preview"),
     getPromotionFiles(promotion.baseBranch, promotion.headBranch),
+    getSourceOrgs(),
   ]);
   const failing = promotion.checks.some((c) => c.status === "failure");
   const running = promotion.checks.some((c) => c.status === "pending");
@@ -55,7 +56,7 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
         files={files.map((f) => ({ ...f, summary: summarizeMetadataPath(f.filename, f.status) }))}
         headBranch={promotion.headBranch}
         baseBranch={promotion.baseBranch}
-        sourceEnv={stage?.environment ?? "integration"}
+        sourceOrgs={sourceOrgs}
         prNumber={promotion.number}
         conflicted={promotion.mergeable === false}
       />

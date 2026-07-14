@@ -34,15 +34,16 @@ function PatchView({ patch }: { patch: string }) {
   );
 }
 
-export function ChangesPanel({ files, headBranch, baseBranch, sourceEnv, prNumber, conflicted }: {
+export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumber, conflicted }: {
   files: FileRow[];
   headBranch: string;
   baseBranch: string;
-  sourceEnv: string;
+  sourceOrgs: { key: string; label: string }[];
   prNumber: number;
   conflicted: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sourceOrg, setSourceOrg] = useState(sourceOrgs[0]?.key ?? "INT");
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
   const router = useRouter();
@@ -66,13 +67,30 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceEnv, prNumbe
     <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">{copy.changes.title}</h2>
-        <button
-          onClick={() => run(() => pullChanges(headBranch, sourceEnv))}
-          disabled={pending}
-          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
-          {pending ? "Working…" : copy.changes.pull}
-        </button>
+        <div className="flex items-center gap-2">
+          {sourceOrgs.length > 1 && (
+            <select
+              value={sourceOrg}
+              onChange={(e) => setSourceOrg(e.target.value)}
+              disabled={pending}
+              aria-label={copy.changes.fromOrg}
+              className="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              {sourceOrgs.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={() => run(() => pullChanges(headBranch, sourceOrg))}
+            disabled={pending}
+            className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            {pending ? "Working…" : copy.changes.pull}
+          </button>
+        </div>
       </div>
 
       {files.length === 0 ? (

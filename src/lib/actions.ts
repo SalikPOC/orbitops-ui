@@ -102,13 +102,14 @@ export async function submitForPromotion(
   }
 }
 
-/** Dispatch the retrieve workflow: pull the builder's sandbox edits into their branch. */
-export async function pullChanges(headBranch: string, sourceEnv: string): Promise<ActionResult> {
+/** Dispatch the retrieve workflow: pull the builder's org edits into their branch. */
+export async function pullChanges(headBranch: string, sourceOrg: string): Promise<ActionResult> {
   try {
     await requireRole("citizen");
     if (!headBranch.startsWith("feature/")) {
       return { ok: false, message: "Changes can only be pulled into a work-item change." };
     }
+    if (!/^[A-Z][A-Z0-9_]*$/.test(sourceOrg)) return { ok: false, message: "Unknown org." };
     if (MOCK) return { ok: true, message: "Pulling your changes… (demo mode)" };
     const gh = await getOctokit();
     await gh.rest.actions.createWorkflowDispatch({
@@ -116,7 +117,7 @@ export async function pullChanges(headBranch: string, sourceEnv: string): Promis
       repo: REPO_NAME,
       workflow_id: "retrieve.yml",
       ref: "main",
-      inputs: { work_branch: headBranch, source_env: sourceEnv },
+      inputs: { work_branch: headBranch, source_org: sourceOrg },
     });
     return {
       ok: true,
