@@ -199,7 +199,9 @@ export async function requestDeveloperHelp(prNumber: number): Promise<ActionResu
 }
 
 /** Create a work-item branch + draft promotion so a citizen dev can start a change. */
-export async function startChange(formData: FormData): Promise<ActionResult> {
+export async function startChange(
+  formData: FormData
+): Promise<ActionResult & { branch?: string }> {
   try {
     await requireRole("citizen");
     const workItem = String(formData.get("workItem") ?? "").trim();
@@ -219,7 +221,7 @@ export async function startChange(formData: FormData): Promise<ActionResult> {
     const slug = description.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
     const branch = `feature/${workItem}-${slug}`;
 
-    if (MOCK) return { ok: true, message: `Change "${branch}" created! (demo mode)` };
+    if (MOCK) return { ok: true, message: `Change "${branch}" created! (demo mode)`, branch };
 
     // Branch-first flow: only the tagged work-item branch is created here.
     // The promotion (PR) is created later, by submitForPromotion, once the
@@ -237,7 +239,8 @@ export async function startChange(formData: FormData): Promise<ActionResult> {
     revalidatePath("/pipeline");
     return {
       ok: true,
-      message: "Your change is ready. Build it in your org, then open it from the board and use “Pull my changes”.",
+      message: "Your change is ready — taking you to it…",
+      branch,
     };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };

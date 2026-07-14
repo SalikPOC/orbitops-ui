@@ -1,5 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { copy } from "@/lib/copy";
 import { startChange, type ActionResult } from "@/lib/actions";
 
@@ -9,10 +10,17 @@ const inputCls =
 export function StartChangeForm({ stages }: { stages: { branch: string; environment: string }[] }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
+  const router = useRouter();
 
   return (
     <form
-      action={(fd) => startTransition(async () => setResult(await startChange(fd)))}
+      action={(fd) =>
+        startTransition(async () => {
+          const r = await startChange(fd);
+          setResult(r);
+          if (r.ok && r.branch) setTimeout(() => router.push(`/changes/${r.branch}`), 800);
+        })
+      }
       className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
     >
       <div>
