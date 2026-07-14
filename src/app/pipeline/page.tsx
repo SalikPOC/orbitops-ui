@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { copy } from "@/lib/copy";
-import { getDeployHistory, getOpenPromotions, getPipeline } from "@/lib/data";
+import { getActiveDeployRun, getDeployHistory, getOpenPromotions, getPipeline } from "@/lib/data";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Chip, WorkItemBadge } from "@/components/chips";
 import type { Promotion } from "@/lib/types";
@@ -10,10 +11,8 @@ function PromotionCard({ p }: { p: Promotion }) {
   const failing = p.checks.some((c) => c.status === "failure");
   const running = p.checks.some((c) => c.status === "pending");
   return (
-    <a
-      href={p.url}
-      target="_blank"
-      rel="noreferrer"
+    <Link
+      href={`/promotions/${p.number}`}
       className="block rounded-xl border border-zinc-200 bg-white p-3 shadow-sm transition hover:shadow dark:border-zinc-800 dark:bg-zinc-900"
     >
       <div className="mb-1 flex items-center gap-2">
@@ -38,25 +37,35 @@ function PromotionCard({ p }: { p: Promotion }) {
           <span className="mt-1 block text-amber-600 dark:text-amber-400">{copy.pipeline.conflict}</span>
         )}
       </div>
-    </a>
+    </Link>
   );
 }
 
 export default async function PipelinePage() {
   const stages = await getPipeline();
-  const [histories, promotions] = await Promise.all([
+  const [histories, promotions, activeRuns] = await Promise.all([
     Promise.all(stages.map((s) => getDeployHistory(s.environment))),
     getOpenPromotions(stages.map((s) => s.branch)),
+    Promise.all(stages.map((s) => getActiveDeployRun(s.branch))),
   ]);
 
   return (
     <div>
       <AutoRefresh seconds={30} />
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">{copy.pipeline.title}</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight">{copy.pipeline.title}</h1>
+        <Link
+          href="/start"
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"
+        >
+          {copy.startChange.button}
+        </Link>
+      </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {stages.map((stage, i) => {
           const latest = histories[i][0];
           const incoming = promotions.filter((p) => p.baseBranch === stage.branch);
+          const active = activeRuns[i];
           return (
             <section
               key={stage.environment}
@@ -80,6 +89,16 @@ export default async function PipelinePage() {
                 </div>
               </header>
 
+              {active && (
+                <a
+                  href={active.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mb-3 block rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm font-medium text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-300"
+                >
+                  {active.status === "waiting" ? copy.releasing.waitingApproval : copy.releasing.inProgress}
+                </a>
+              )}
               <div className="mb-4 rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                 <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">
                   {copy.pipeline.currentRelease}

@@ -47,11 +47,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   {copy.mockBadge}
                 </span>
               )}
-              {user && (
+              {user ? (
                 <div className="text-xs text-zinc-500">
                   <div className="font-medium text-zinc-700 dark:text-zinc-300">{user.login}</div>
                   <div>{copy.roles[user.role]}</div>
                 </div>
+              ) : (
+                <a
+                  href="/api/auth/signin"
+                  className="block rounded-lg bg-zinc-900 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                >
+                  {copy.signIn}
+                </a>
               )}
             </div>
           </aside>

@@ -49,6 +49,23 @@ export const copy = {
   settings: { title: "Stage gate settings" },
   audit: { title: "Activity log" },
 
+  startChange: {
+    button: "Start a change",
+    title: "Start a change",
+    intro: "Tell us which work item this change belongs to, and we'll set everything up.",
+    workItemLabel: "Work item ID",
+    workItemHint: "From Jira (PROJ-123) or Azure DevOps (AB#456)",
+    descriptionLabel: "What are you changing?",
+    descriptionHint: "A short sentence — this becomes the change's title",
+    stageLabel: "Where will you build it?",
+    submit: "Create my change",
+  },
+
+  releasing: {
+    inProgress: "Releasing…",
+    waitingApproval: "Waiting for release manager approval",
+  },
+
   roles: {
     citizen: "Builder",
     "release-manager": "Release manager",

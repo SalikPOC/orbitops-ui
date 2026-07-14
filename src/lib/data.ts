@@ -57,6 +57,75 @@ function chipStatus(conclusion: string | null, status: string): CheckChip["statu
   return "failure";
 }
 
+/** Body of the workflow-authored sticky comment carrying the given marker, or null. */
+export async function getStickyComment(prNumber: number, marker: string): Promise<string | null> {
+  if (MOCK) {
+    return marker.includes("deploy-preview")
+      ? "## 📦 What will deploy\n\n**1** component to deploy:\n\n- **CustomField** (1)\n  - BUP_Clinic__c.Discount__c"
+      : null;
+  }
+  const gh = await getOctokit();
+  const comments = await gh.rest.issues.listComments({
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    issue_number: prNumber,
+    per_page: 100,
+  });
+  return comments.data.find((c) => c.body?.includes(marker))?.body ?? null;
+}
+
+/** Latest deploy-workflow run for a stage branch, when one is active or gated. */
+export async function getActiveDeployRun(
+  branch: string
+): Promise<{ status: string; url: string } | null> {
+  if (MOCK) return branch === "uat" ? { status: "waiting", url: "https://github.com" } : null;
+  const gh = await getOctokit();
+  const runs = await gh.rest.actions.listWorkflowRuns({
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    workflow_id: "deploy.yml",
+    branch,
+    per_page: 1,
+  });
+  const run = runs.data.workflow_runs[0];
+  if (!run) return null;
+  const active = ["in_progress", "queued", "waiting", "requested", "pending"];
+  return active.includes(run.status ?? "") ? { status: run.status!, url: run.html_url } : null;
+}
+
+export async function getPromotion(number: number): Promise<Promotion | null> {
+  if (MOCK) return fixturePromotions.find((p) => p.number === number) ?? null;
+  const gh = await getOctokit();
+  try {
+    const pr = await gh.rest.pulls.get({ owner: REPO_OWNER, repo: REPO_NAME, pull_number: number });
+    const checks = await gh.rest.checks.listForRef({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      ref: pr.data.head.sha,
+      per_page: 50,
+    });
+    const text = `${pr.data.title}\n${pr.data.head.ref}\n${pr.data.body ?? ""}`;
+    return {
+      number,
+      title: pr.data.title,
+      author: pr.data.user?.login ?? "unknown",
+      headBranch: pr.data.head.ref,
+      baseBranch: pr.data.base.ref,
+      workItems: [...new Set(text.match(WORK_ITEM_RE) ?? [])],
+      mergeable: pr.data.mergeable,
+      url: pr.data.html_url,
+      checks: checks.data.check_runs.map((c) => ({
+        name: c.name,
+        status: chipStatus(c.conclusion, c.status),
+        url: c.html_url ?? undefined,
+      })),
+    };
+  } catch (err: unknown) {
+    if ((err as { status?: number }).status === 404) return null;
+    throw err;
+  }
+}
+
 export async function getOpenPromotions(stageBranches: string[]): Promise<Promotion[]> {
   if (MOCK) return fixturePromotions;
   const gh = await getOctokit();
