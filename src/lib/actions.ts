@@ -53,6 +53,12 @@ export async function promote(prNumber: number): Promise<ActionResult> {
       pull_number: prNumber,
       merge_method: "merge",
     });
+    // Tidy up: merged work branches otherwise linger as "being built" on the board.
+    if (promotion.headBranch.startsWith("feature/")) {
+      await gh.rest.git
+        .deleteRef({ owner: REPO_OWNER, repo: REPO_NAME, ref: `heads/${promotion.headBranch}` })
+        .catch(() => {});
+    }
     revalidatePath("/pipeline");
     return { ok: true, message: "Promoted — the release is on its way." };
   } catch (err) {
