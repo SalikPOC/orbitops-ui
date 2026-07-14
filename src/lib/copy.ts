@@ -80,6 +80,26 @@ export const copy = {
     updates: (n: number) => (n === 0 ? "Nothing pulled in yet" : `${n} update${n === 1 ? "" : "s"} pulled in`),
   },
 
+  connectOrg: {
+    title: "Connect an org",
+    button: "Connect an org",
+    intro:
+      "Link a sandbox, scratch org, or dev org so you can pull your changes from it. You'll sign in on Salesforce's own login page — we never see your password.",
+    nameLabel: "What should we call it?",
+    nameHint: "Shown in the “Pull my changes” org picker",
+    typeLabel: "What kind of org is it?",
+    typeSandbox: "Sandbox or scratch org",
+    typeProduction: "Production or Developer Edition",
+    domainLabel: "My Domain (optional)",
+    domainHint: "Only needed if your org requires logging in via its own domain",
+    submit: "Continue to Salesforce login",
+    security:
+      "Salesforce gives OrbitOps a revocable access token, stored encrypted — you can disconnect any time from your org's Connected Apps settings.",
+    connected: "Org connected! It's now available in the “Pull my changes” picker.",
+    listTitle: "Connected orgs",
+    none: "No orgs connected yet.",
+  },
+
   submit: {
     title: "Ready to go?",
     ready: "Submit this change to start the checks and get it ready to promote.",

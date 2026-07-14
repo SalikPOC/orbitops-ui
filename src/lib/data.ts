@@ -36,10 +36,19 @@ export async function getPipeline(): Promise<Stage[]> {
   return (await getConfig()).pipeline;
 }
 
-/** Orgs a builder can pull changes from: registered devOrgs, else the first stage's org. */
+/** Orgs a builder can pull changes from: devOrgs config + UI-connected orgs. */
 export async function getSourceOrgs(): Promise<{ key: string; label: string }[]> {
   const cfg = await getConfig();
-  if (cfg.devOrgs?.length) return cfg.devOrgs.map((d) => ({ key: d.org, label: d.name }));
+  const fromConfig = (cfg.devOrgs ?? []).map((d) => ({ key: d.org, label: d.name }));
+  let connected: { key: string; label: string }[] = [];
+  if (!MOCK) {
+    const { readConnectedOrgs } = await import("./github-admin");
+    connected = (await readConnectedOrgs()).map((o) => ({ key: o.org, label: o.name }));
+  } else {
+    connected = [{ key: "DEV_DEMO_CONNECTED", label: "Demo connected org" }];
+  }
+  const all = [...fromConfig, ...connected.filter((c) => !fromConfig.some((f) => f.key === c.key))];
+  if (all.length) return all;
   const first = cfg.pipeline[0];
   return first ? [{ key: first.org, label: `${first.environment} org` }] : [];
 }
