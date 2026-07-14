@@ -90,8 +90,9 @@ export const copy = {
     typeLabel: "What kind of org is it?",
     typeSandbox: "Sandbox or scratch org",
     typeProduction: "Production or Developer Edition",
-    domainLabel: "My Domain (optional)",
-    domainHint: "Only needed if your org requires logging in via its own domain",
+    domainLabel: "My Domain",
+    domainHint:
+      "Recommended — required for scratch orgs and most sandboxes. It's the first part of your org's URL, e.g. mycompany--dev.sandbox.my.salesforce.com",
     submit: "Continue to Salesforce login",
     security:
       "Salesforce gives OrbitOps a revocable access token, stored encrypted — you can disconnect any time from your org's Connected Apps settings.",
