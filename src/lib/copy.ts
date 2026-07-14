@@ -66,6 +66,16 @@ export const copy = {
     waitingApproval: "Waiting for release manager approval",
   },
 
+  changes: {
+    title: "What's in this change",
+    pull: "Pull my changes",
+    empty:
+      "Nothing here yet. Build in your org, then use “Pull my changes” to bring your work in.",
+    showDetails: "Show technical details",
+    removeSelected: (n: number) => (n ? `Remove ${n} selected from this change` : "Remove selected"),
+    askForHelp: "Ask a developer for help",
+  },
+
   roles: {
     citizen: "Builder",
     "release-manager": "Release manager",

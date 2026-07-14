@@ -57,6 +57,51 @@ function chipStatus(conclusion: string | null, status: string): CheckChip["statu
   return "failure";
 }
 
+/** Changed files between a promotion's target and its work branch. */
+export async function getPromotionFiles(
+  baseBranch: string,
+  headBranch: string
+): Promise<{ filename: string; status: string; patch?: string }[]> {
+  if (MOCK) {
+    return [
+      {
+        filename: "force-app/main/default/objects/BUP_Clinic__c/fields/Discount__c.field-meta.xml",
+        status: "added",
+        patch:
+          '@@ -0,0 +1,8 @@\n+<?xml version="1.0" encoding="UTF-8"?>\n+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">\n+    <fullName>Discount__c</fullName>\n+    <label>Discount</label>\n+    <type>Percent</type>\n+</CustomField>',
+      },
+      {
+        filename: "force-app/main/default/flows/Case_Routing.flow-meta.xml",
+        status: "modified",
+        patch: "@@ -12,7 +12,7 @@\n-        <targetReference>Old_Step</targetReference>\n+        <targetReference>New_Step</targetReference>",
+      },
+    ];
+  }
+  const gh = await getOctokit();
+  const cmp = await gh.rest.repos.compareCommitsWithBasehead({
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    basehead: `${baseBranch}...${headBranch}`,
+  });
+  return (cmp.data.files ?? []).map((f) => ({ filename: f.filename, status: f.status, patch: f.patch }));
+}
+
+/** Latest retrieve-workflow run for a work branch (via dispatch inputs we set). */
+export async function getActiveRetrieveRun(): Promise<{ status: string; url: string } | null> {
+  if (MOCK) return null;
+  const gh = await getOctokit();
+  const runs = await gh.rest.actions.listWorkflowRuns({
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    workflow_id: "retrieve.yml",
+    per_page: 1,
+  });
+  const run = runs.data.workflow_runs[0];
+  if (!run) return null;
+  const active = ["in_progress", "queued", "waiting", "requested", "pending"];
+  return active.includes(run.status ?? "") ? { status: run.status!, url: run.html_url } : null;
+}
+
 /** Body of the workflow-authored sticky comment carrying the given marker, or null. */
 export async function getStickyComment(prNumber: number, marker: string): Promise<string | null> {
   if (MOCK) {

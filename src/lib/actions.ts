@@ -60,6 +60,108 @@ export async function promote(prNumber: number): Promise<ActionResult> {
   }
 }
 
+/** Dispatch the retrieve workflow: pull the builder's sandbox edits into their branch. */
+export async function pullChanges(headBranch: string, sourceEnv: string): Promise<ActionResult> {
+  try {
+    await requireRole("citizen");
+    if (!headBranch.startsWith("feature/")) {
+      return { ok: false, message: "Changes can only be pulled into a work-item change." };
+    }
+    if (MOCK) return { ok: true, message: "Pulling your changes… (demo mode)" };
+    const gh = await getOctokit();
+    await gh.rest.actions.createWorkflowDispatch({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      workflow_id: "retrieve.yml",
+      ref: "main",
+      inputs: { work_branch: headBranch, source_env: sourceEnv },
+    });
+    return {
+      ok: true,
+      message: "Pulling your changes from the org — this takes a minute or two. The list below refreshes automatically.",
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+/**
+ * Keep/discard selection: reverts the discarded paths on the work branch back to
+ * their target-stage versions (or removes them if they're new), via the git data
+ * API — one commit, no force-push.
+ */
+export async function discardComponents(
+  headBranch: string,
+  baseBranch: string,
+  paths: string[]
+): Promise<ActionResult> {
+  try {
+    await requireRole("citizen");
+    if (!paths.length) return { ok: false, message: "Nothing selected to remove." };
+    if (MOCK) return { ok: true, message: `Removed ${paths.length} item(s) from this change. (demo mode)` };
+
+    const gh = await getOctokit();
+    const [headRef, baseRef] = await Promise.all([
+      gh.rest.git.getRef({ owner: REPO_OWNER, repo: REPO_NAME, ref: `heads/${headBranch}` }),
+      gh.rest.git.getRef({ owner: REPO_OWNER, repo: REPO_NAME, ref: `heads/${baseBranch}` }),
+    ]);
+    const headCommit = await gh.rest.git.getCommit({
+      owner: REPO_OWNER, repo: REPO_NAME, commit_sha: headRef.data.object.sha,
+    });
+
+    const tree: { path: string; mode: "100644"; type: "blob"; sha: string | null }[] = [];
+    for (const path of paths) {
+      // Base version wins; absent in base = delete from the work branch.
+      let sha: string | null = null;
+      try {
+        const baseFile = await gh.rest.repos.getContent({
+          owner: REPO_OWNER, repo: REPO_NAME, path, ref: baseRef.data.object.sha,
+        });
+        sha = (baseFile.data as { sha: string }).sha;
+      } catch (err: unknown) {
+        if ((err as { status?: number }).status !== 404) throw err;
+      }
+      tree.push({ path, mode: "100644", type: "blob", sha });
+    }
+
+    const newTree = await gh.rest.git.createTree({
+      owner: REPO_OWNER, repo: REPO_NAME, base_tree: headCommit.data.tree.sha, tree,
+    });
+    const commit = await gh.rest.git.createCommit({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      message: `Remove ${paths.length} component(s) not part of this change\n\nSelected in OrbitOps.\n\nWork-Items: ${headBranch.match(/[A-Z][A-Z0-9]+-\d+|AB#\d+/)?.[0] ?? "POC-0"}`,
+      tree: newTree.data.sha,
+      parents: [headRef.data.object.sha],
+    });
+    await gh.rest.git.updateRef({
+      owner: REPO_OWNER, repo: REPO_NAME, ref: `heads/${headBranch}`, sha: commit.data.sha,
+    });
+    revalidatePath("/promotions");
+    return { ok: true, message: `Removed ${paths.length} item(s) from this change.` };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+/** Conflict handoff: flag the promotion for a developer (E6.4). */
+export async function requestDeveloperHelp(prNumber: number): Promise<ActionResult> {
+  try {
+    const user = await requireRole("citizen");
+    if (MOCK) return { ok: true, message: "A developer has been asked to help. (demo mode)" };
+    const gh = await getOctokit();
+    await gh.rest.issues.createComment({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      issue_number: prNumber,
+      body: `🙋 **@${user.login} asked for developer help via OrbitOps** — this change overlaps with another change and needs the conflict resolved.`,
+    });
+    return { ok: true, message: "A developer has been asked to help with this change." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
 /** Create a work-item branch + draft promotion so a citizen dev can start a change. */
 export async function startChange(formData: FormData): Promise<ActionResult> {
   try {

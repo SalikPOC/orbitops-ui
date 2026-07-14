@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { marked } from "marked";
 import { copy } from "@/lib/copy";
-import { getPipeline, getPromotion, getStickyComment } from "@/lib/data";
+import { getPipeline, getPromotion, getPromotionFiles, getStickyComment } from "@/lib/data";
+import { summarizeMetadataPath } from "@/lib/metadata-summary";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Chip, WorkItemBadge } from "@/components/chips";
 import { PromoteButton } from "@/components/PromoteButton";
+import { ChangesPanel } from "@/components/ChangesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,10 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
   if (!promotion) notFound();
 
   const stage = stages.find((s) => s.branch === promotion.baseBranch);
-  const preview = await getStickyComment(prNumber, "orbitops:deploy-preview");
+  const [preview, files] = await Promise.all([
+    getStickyComment(prNumber, "orbitops:deploy-preview"),
+    getPromotionFiles(promotion.baseBranch, promotion.headBranch),
+  ]);
   const failing = promotion.checks.some((c) => c.status === "failure");
   const running = promotion.checks.some((c) => c.status === "pending");
   const blocked = failing || running || promotion.mergeable === false;
@@ -45,6 +50,15 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
           <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">{copy.pipeline.conflict}</p>
         )}
       </section>
+
+      <ChangesPanel
+        files={files.map((f) => ({ ...f, summary: summarizeMetadataPath(f.filename, f.status) }))}
+        headBranch={promotion.headBranch}
+        baseBranch={promotion.baseBranch}
+        sourceEnv={stage?.environment ?? "integration"}
+        prNumber={promotion.number}
+        conflicted={promotion.mergeable === false}
+      />
 
       {preview && (
         <section className="prose prose-sm prose-zinc mb-6 max-w-none rounded-2xl border border-zinc-200 bg-white p-4 dark:prose-invert dark:border-zinc-800 dark:bg-zinc-900 [&_h2]:mt-0">
