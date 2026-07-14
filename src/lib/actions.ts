@@ -60,6 +60,42 @@ export async function promote(prNumber: number): Promise<ActionResult> {
   }
 }
 
+/** Create the promotion (PR) for a work branch once it has real changes in it. */
+export async function submitForPromotion(
+  headBranch: string,
+  baseBranch: string,
+  title: string
+): Promise<ActionResult & { prNumber?: number }> {
+  try {
+    await requireRole("citizen");
+    if (!headBranch.startsWith("feature/"))
+      return { ok: false, message: "Only work-item changes can be submitted." };
+    const workItem = headBranch.match(/[A-Z][A-Z0-9]+-\d+|AB#\d+/)?.[0];
+    if (!workItem) return { ok: false, message: "This change has no work item in its name." };
+    if (MOCK) return { ok: true, message: "Submitted! (demo mode)", prNumber: 42 };
+
+    const gh = await getOctokit();
+    const existing = await gh.rest.pulls.list({
+      owner: REPO_OWNER, repo: REPO_NAME, state: "open", head: `${REPO_OWNER}:${headBranch}`,
+    });
+    if (existing.data[0]) {
+      return { ok: true, message: "Already submitted.", prNumber: existing.data[0].number };
+    }
+    const pr = await gh.rest.pulls.create({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      title: `${title} (${workItem})`,
+      head: headBranch,
+      base: baseBranch,
+      body: `## What does this change do?\n\n${title}\n\n## Work Items\n\nWork-Items: ${workItem}\n`,
+    });
+    revalidatePath("/pipeline");
+    return { ok: true, message: "Submitted — checks are starting.", prNumber: pr.data.number };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
 /** Dispatch the retrieve workflow: pull the builder's sandbox edits into their branch. */
 export async function pullChanges(headBranch: string, sourceEnv: string): Promise<ActionResult> {
   try {
@@ -185,27 +221,23 @@ export async function startChange(formData: FormData): Promise<ActionResult> {
 
     if (MOCK) return { ok: true, message: `Change "${branch}" created! (demo mode)` };
 
+    // Branch-first flow: only the tagged work-item branch is created here.
+    // The promotion (PR) is created later, by submitForPromotion, once the
+    // builder has pulled real changes in — GitHub disallows empty PRs anyway.
     const gh = await getOctokit();
     const base = await gh.rest.git.getRef({ owner: REPO_OWNER, repo: REPO_NAME, ref: `heads/${sourceBranch}` });
-    await gh.rest.git.createRef({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      ref: `refs/heads/${branch}`,
-      sha: base.data.object.sha,
-    });
-    const pr = await gh.rest.pulls.create({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      title: `${description} (${workItem})`,
-      head: branch,
-      base: sourceBranch,
-      draft: true,
-      body: `## What does this change do?\n\n${description}\n\n## Work Items\n\nWork-Items: ${workItem}\n`,
-    });
+    try {
+      await gh.rest.git.createRef({
+        owner: REPO_OWNER, repo: REPO_NAME, ref: `refs/heads/${branch}`, sha: base.data.object.sha,
+      });
+    } catch (err: unknown) {
+      if ((err as { status?: number }).status !== 422) throw err; // 422 = branch exists: reuse it
+    }
+
     revalidatePath("/pipeline");
     return {
       ok: true,
-      message: `Your change is ready. Build it in your sandbox, then pull your changes into #${pr.data.number}.`,
+      message: "Your change is ready. Build it in your org, then open it from the board and use “Pull my changes”.",
     };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };

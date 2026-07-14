@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { copy } from "@/lib/copy";
-import { getActiveDeployRun, getDeployHistory, getOpenPromotions, getPipeline } from "@/lib/data";
+import {
+  getActiveDeployRun,
+  getDeployHistory,
+  getInProgressChanges,
+  getOpenPromotions,
+  getPipeline,
+} from "@/lib/data";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Chip, WorkItemBadge } from "@/components/chips";
 import type { Promotion } from "@/lib/types";
@@ -43,10 +49,11 @@ function PromotionCard({ p }: { p: Promotion }) {
 
 export default async function PipelinePage() {
   const stages = await getPipeline();
-  const [histories, promotions, activeRuns] = await Promise.all([
+  const [histories, promotions, activeRuns, inProgress] = await Promise.all([
     Promise.all(stages.map((s) => getDeployHistory(s.environment))),
     getOpenPromotions(stages.map((s) => s.branch)),
     Promise.all(stages.map((s) => getActiveDeployRun(s.branch))),
+    getInProgressChanges(stages[0]?.branch ?? "integration"),
   ]);
 
   return (
@@ -61,6 +68,30 @@ export default async function PipelinePage() {
           {copy.startChange.button}
         </Link>
       </div>
+      {inProgress.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
+            {copy.changes.beingBuilt}
+          </h2>
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+            {inProgress.map((c) => (
+              <Link
+                key={c.branch}
+                href={`/changes/${c.branch}`}
+                className="block rounded-xl border border-dashed border-zinc-300 bg-white p-3 transition hover:border-zinc-400 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <div className="mb-1 flex items-center gap-2">
+                  {c.workItems.map((w) => (
+                    <WorkItemBadge key={w} id={w} />
+                  ))}
+                </div>
+                <div className="text-sm font-medium">{c.title}</div>
+                <div className="mt-1 text-xs text-zinc-500">{copy.changes.updates(c.aheadCount)}</div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {stages.map((stage, i) => {
           const latest = histories[i][0];

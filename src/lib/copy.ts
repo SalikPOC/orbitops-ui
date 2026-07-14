@@ -74,6 +74,16 @@ export const copy = {
     showDetails: "Show technical details",
     removeSelected: (n: number) => (n ? `Remove ${n} selected from this change` : "Remove selected"),
     askForHelp: "Ask a developer for help",
+    inProgress: "Being built",
+    beingBuilt: "Changes being built",
+    updates: (n: number) => (n === 0 ? "Nothing pulled in yet" : `${n} update${n === 1 ? "" : "s"} pulled in`),
+  },
+
+  submit: {
+    title: "Ready to go?",
+    ready: "Submit this change to start the checks and get it ready to promote.",
+    needChanges: "Pull your changes in first — there's nothing to submit yet.",
+    button: "Submit for promotion",
   },
 
   roles: {

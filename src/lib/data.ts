@@ -57,6 +57,60 @@ function chipStatus(conclusion: string | null, status: string): CheckChip["statu
   return "failure";
 }
 
+export interface InProgressChange {
+  branch: string;
+  workItems: string[];
+  title: string;
+  aheadCount: number;
+}
+
+/** Work-item branches that don't have a promotion (PR) open yet — changes being built. */
+export async function getInProgressChanges(baseBranch: string): Promise<InProgressChange[]> {
+  if (MOCK) {
+    return [
+      {
+        branch: "feature/POC-9-price-book-cleanup",
+        workItems: ["POC-9"],
+        title: "Price book cleanup",
+        aheadCount: 0,
+      },
+    ];
+  }
+  const gh = await getOctokit();
+  const [branches, prs] = await Promise.all([
+    gh.rest.repos.listBranches({ owner: REPO_OWNER, repo: REPO_NAME, per_page: 100 }),
+    gh.rest.pulls.list({ owner: REPO_OWNER, repo: REPO_NAME, state: "open", per_page: 100 }),
+  ]);
+  const withPr = new Set(prs.data.map((p) => p.head.ref));
+  const features = branches.data.filter((b) => b.name.startsWith("feature/") && !withPr.has(b.name));
+
+  return Promise.all(
+    features.map(async (b) => {
+      let aheadCount = 0;
+      try {
+        const cmp = await gh.rest.repos.compareCommitsWithBasehead({
+          owner: REPO_OWNER, repo: REPO_NAME, basehead: `${baseBranch}...${b.name}`,
+        });
+        aheadCount = cmp.data.ahead_by;
+      } catch {
+        /* diverged/unknown — leave 0 */
+      }
+      const workItems = [...new Set(b.name.match(WORK_ITEM_RE) ?? [])];
+      const slug = b.name
+        .replace(/^feature\//, "")
+        .replace(/^([A-Z][A-Z0-9]+-\d+|AB#\d+)-?/, "")
+        .replace(/-/g, " ")
+        .trim();
+      return {
+        branch: b.name,
+        workItems,
+        title: slug ? slug[0].toUpperCase() + slug.slice(1) : b.name,
+        aheadCount,
+      };
+    })
+  );
+}
+
 /** Changed files between a promotion's target and its work branch. */
 export async function getPromotionFiles(
   baseBranch: string,
