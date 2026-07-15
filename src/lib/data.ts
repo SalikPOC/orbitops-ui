@@ -346,6 +346,24 @@ export async function getActiveDeployRun(
   return active.includes(run.status ?? "") ? { status: run.status!, url: run.html_url } : null;
 }
 
+/**
+ * One chip per check name. listForRef can return same-named runs from
+ * different workflows/attempts on the same SHA; keep the newest (the API
+ * returns most-recently-started first) — duplicates broke React keys.
+ */
+function toCheckChips(
+  runs: { name: string; conclusion: string | null; status: string; html_url: string | null }[]
+): Promotion["checks"] {
+  const seen = new Set<string>();
+  const chips: Promotion["checks"] = [];
+  for (const c of runs) {
+    if (seen.has(c.name)) continue;
+    seen.add(c.name);
+    chips.push({ name: c.name, status: chipStatus(c.conclusion, c.status), url: c.html_url ?? undefined });
+  }
+  return chips;
+}
+
 export async function getPromotion(number: number): Promise<Promotion | null> {
   if (MOCK) return fixturePromotions.find((p) => p.number === number) ?? null;
   const gh = await getOctokit();
@@ -367,11 +385,7 @@ export async function getPromotion(number: number): Promise<Promotion | null> {
       workItems: [...new Set(text.match(WORK_ITEM_RE) ?? [])],
       mergeable: pr.data.mergeable,
       url: pr.data.html_url,
-      checks: checks.data.check_runs.map((c) => ({
-        name: c.name,
-        status: chipStatus(c.conclusion, c.status),
-        url: c.html_url ?? undefined,
-      })),
+      checks: toCheckChips(checks.data.check_runs),
     };
   } catch (err: unknown) {
     if ((err as { status?: number }).status === 404) return null;
@@ -401,11 +415,7 @@ export async function getOpenPromotions(stageBranches: string[]): Promise<Promot
         workItems: [...new Set(text.match(WORK_ITEM_RE) ?? [])],
         mergeable: detail.data.mergeable,
         url: pr.html_url,
-        checks: checks.data.check_runs.map((c) => ({
-          name: c.name,
-          status: chipStatus(c.conclusion, c.status),
-          url: c.html_url ?? undefined,
-        })),
+        checks: toCheckChips(checks.data.check_runs),
       } satisfies Promotion;
     })
   );

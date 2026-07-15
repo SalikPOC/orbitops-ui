@@ -16,7 +16,7 @@ const chipIcon: Record<CheckChip["status"], string> = {
   neutral: "–",
 };
 
-export function Chip({ chip }: { chip: CheckChip }) {
+export function Chip({ chip, link = true }: { chip: CheckChip; link?: boolean }) {
   const inner = (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${chipStyles[chip.status]}`}
@@ -24,7 +24,9 @@ export function Chip({ chip }: { chip: CheckChip }) {
       {chipIcon[chip.status]} {chip.name}
     </span>
   );
-  return chip.url ? (
+  // link={false} when the chip sits inside another link (e.g. a promotion
+  // card) — HTML forbids nested <a> and React flags it as a hydration error.
+  return link && chip.url ? (
     <a href={chip.url} target="_blank" rel="noreferrer">
       {inner}
     </a>

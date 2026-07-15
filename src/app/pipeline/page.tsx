@@ -30,7 +30,7 @@ function PromotionCard({ p }: { p: Promotion }) {
       <div className="mb-2 text-sm font-medium leading-snug">{p.title}</div>
       <div className="mb-2 flex flex-wrap gap-1">
         {p.checks.map((c) => (
-          <Chip key={c.name} chip={c} />
+          <Chip key={c.name} chip={c} link={false} />
         ))}
       </div>
       <div className="text-xs text-zinc-500">
