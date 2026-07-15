@@ -28,7 +28,7 @@ export default async function ChangePage({ params }: { params: Promise<{ branch:
   const title = slug ? slug[0].toUpperCase() + slug.slice(1) : headBranch;
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <AutoRefresh seconds={20} />
       <div className="mb-1 flex items-center gap-2">
         {workItems.map((w) => (

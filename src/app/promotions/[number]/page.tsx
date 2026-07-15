@@ -28,7 +28,7 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
   const blocked = failing || running || promotion.mergeable === false;
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <AutoRefresh seconds={20} />
       <div className="mb-1 flex items-center gap-2">
         {promotion.workItems.map((w) => (

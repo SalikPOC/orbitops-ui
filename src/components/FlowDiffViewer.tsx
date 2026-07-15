@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FlowDiffModel, FlowNodeStatus } from "@/lib/flow-diff";
 import { kindLabel } from "@/lib/flow-diff";
 
@@ -166,7 +166,19 @@ const trunc = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1) + "…
 
 export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
   const [focus, setFocus] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<number | "fit">("fit");
+  const [expanded, setExpanded] = useState(false);
   const byName = useMemo(() => new Map(model.nodes.map((n) => [n.name, n])), [model.nodes]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExpanded(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
+  const zoomIn = () => setZoom((z) => (z === "fit" ? 0.75 : Math.min(2, Math.round(z * 125) / 100)));
+  const zoomOut = () => setZoom((z) => (z === "fit" ? 0.5 : Math.max(0.2, Math.round((z / 1.25) * 100) / 100)));
 
   const { minX, minY, width, height } = useMemo(() => {
     const xs = model.nodes.length ? model.nodes.map((n) => n.x) : [0];
@@ -182,6 +194,7 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
   }, [model.nodes]);
 
   const changedCount = model.nodes.filter((n) => n.status !== "unchanged").length;
+  const maxH: number | string = expanded ? "calc(94vh - 150px)" : 460;
 
   const cardText = (n: { name: string; label: string; kind: string }) => {
     if (n.kind === "start") {
@@ -192,8 +205,12 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
     return { title: n.label, caption: kindLabel(n.kind) };
   };
 
-  return (
-    <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-900">
+  const panel = (
+    <div
+      className={`rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-900 ${
+        expanded ? "h-full overflow-auto" : "mt-2"
+      }`}
+    >
       <div className="mb-2 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold">{model.flowLabel}</span>
         {model.statusBase !== model.statusHead && (
@@ -204,13 +221,32 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
         <span className="text-xs text-zinc-500">
           {changedCount} element{changedCount === 1 ? "" : "s"} differ
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <Legend />
+          <div className="flex items-center gap-0.5 rounded-lg border border-zinc-200 bg-white px-1 py-0.5 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+            <button onClick={zoomOut} className="px-1.5 text-sm leading-none hover:text-indigo-600" aria-label="Zoom out">−</button>
+            <span className="w-9 text-center text-[11px] text-zinc-500">
+              {zoom === "fit" ? "fit" : `${Math.round(zoom * 100)}%`}
+            </span>
+            <button onClick={zoomIn} className="px-1.5 text-sm leading-none hover:text-indigo-600" aria-label="Zoom in">+</button>
+            <button
+              onClick={() => setZoom("fit")}
+              className={`px-1.5 text-[11px] font-medium ${zoom === "fit" ? "text-indigo-600" : "hover:text-indigo-600"}`}
+            >
+              Fit
+            </button>
+          </div>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:text-indigo-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          >
+            {expanded ? "✕ Close" : "⤢ Expand"}
+          </button>
         </div>
       </div>
 
       <div className="flex gap-3">
-        <div className="w-48 shrink-0 space-y-1 overflow-auto" style={{ maxHeight: 460 }}>
+        <div className={`${expanded ? "w-64" : "w-48"} shrink-0 space-y-1 overflow-auto`} style={{ maxHeight: maxH }}>
           {model.nodes
             .filter((n) => n.status !== "unchanged")
             .map((n) => (
@@ -241,8 +277,13 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
         </div>
 
         {/* Canvas — Flow Builder dotted background, always light */}
-        <div className="grow overflow-auto rounded-lg border border-zinc-200 dark:border-zinc-700" style={{ maxHeight: 460, background: "#fafaf9" }}>
-          <svg width={width * 0.95} height={height * 0.95} viewBox={`${minX} ${minY} ${width} ${height}`}>
+        <div className="grow overflow-auto rounded-lg border border-zinc-200 dark:border-zinc-700" style={{ maxHeight: maxH, background: "#fafaf9" }}>
+          <svg
+            {...(zoom === "fit"
+              ? { style: { width: "100%", height: "auto", display: "block" as const } }
+              : { width: width * zoom, height: height * zoom })}
+            viewBox={`${minX} ${minY} ${width} ${height}`}
+          >
             <defs>
               <pattern id="flowdots" width="22" height="22" patternUnits="userSpaceOnUse">
                 <circle cx="1.5" cy="1.5" r="1.1" fill="#e4e4e7" />
@@ -315,6 +356,19 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
             })}
           </svg>
         </div>
+      </div>
+    </div>
+  );
+
+  if (!expanded) return panel;
+  // Near-fullscreen overlay for big flows; Esc or backdrop click closes.
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={() => setExpanded(false)}
+    >
+      <div className="h-[94vh] w-[96vw]" onClick={(e) => e.stopPropagation()}>
+        {panel}
       </div>
     </div>
   );
