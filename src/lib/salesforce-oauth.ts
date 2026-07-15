@@ -35,7 +35,8 @@ export function authorizeUrl(loginUrl: string, redirectUri: string, challenge: s
   u.searchParams.set("code_challenge", challenge);
   u.searchParams.set("code_challenge_method", "S256");
   u.searchParams.set("state", state);
-  u.searchParams.set("prompt", "login"); // always a fresh login → users connect the org they intend
+  // No `prompt=login`: like other Salesforce tools, reuse an existing browser
+  // session when there is one — the consent screen still names the org user.
   return u.toString();
 }
 

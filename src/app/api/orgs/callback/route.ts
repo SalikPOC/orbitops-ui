@@ -20,6 +20,17 @@ export async function GET(req: NextRequest) {
     return fail("The connection attempt was malformed — try again.");
   }
 
+  // Salesforce redirects OAuth failures here with error params — surface them
+  // usefully instead of a generic message, and hint at the My Domain fallback.
+  const sfError = req.nextUrl.searchParams.get("error");
+  if (sfError) {
+    const desc = req.nextUrl.searchParams.get("error_description") ?? sfError;
+    return fail(
+      `Salesforce couldn't complete the connection (${desc}). ` +
+        `If this org enforces its own login domain, add its My Domain below and try again.`
+    );
+  }
+
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
   if (!code || state !== ctx.state) return fail("Salesforce returned an invalid response — try again.");
