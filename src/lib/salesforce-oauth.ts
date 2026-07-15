@@ -73,7 +73,14 @@ export async function exchangeCode(
 }
 
 /** Prove the refresh token works before we save anything. */
-export async function testRefresh(loginUrl: string, refreshToken: string): Promise<void> {
+/**
+ * Verify the refresh token works, and return the token to seal: if the
+ * connected app has refresh-token rotation enabled, this refresh mints a NEW
+ * token and invalidates the one we were given — sealing the original would
+ * store a dead credential. (Rotation should be OFF for CI use; this makes a
+ * misconfigured app fail on the second run instead of the first.)
+ */
+export async function testRefresh(loginUrl: string, refreshToken: string): Promise<string> {
   const res = await fetch(new URL("/services/oauth2/token", loginUrl), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -84,6 +91,8 @@ export async function testRefresh(loginUrl: string, refreshToken: string): Promi
     }),
   });
   if (!res.ok) throw new Error("The connection was created but could not be verified — try again.");
+  const body = (await res.json()) as { refresh_token?: string };
+  return body.refresh_token ?? refreshToken; // rotated token when rotation is on
 }
 
 /** sfdx auth URL the CI replays with `sf org login sfdx-url` (secretless form). */

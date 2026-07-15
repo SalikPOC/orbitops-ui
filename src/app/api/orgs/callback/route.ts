@@ -38,8 +38,8 @@ export async function GET(req: NextRequest) {
   try {
     const redirectUri = new URL(CALLBACK_PATH, req.nextUrl.origin).toString();
     const token = await exchangeCode(ctx.loginUrl, redirectUri, code, ctx.verifier);
-    await testRefresh(ctx.loginUrl, token.refresh_token);
-    await putRepoSecret(`${ctx.key}_SF_AUTH_URL`, toSfdxAuthUrl(token.refresh_token, token.instance_url));
+    const liveToken = await testRefresh(ctx.loginUrl, token.refresh_token);
+    await putRepoSecret(`${ctx.key}_SF_AUTH_URL`, toSfdxAuthUrl(liveToken, token.instance_url));
     await addConnectedOrg({
       name: ctx.name,
       org: ctx.key,
