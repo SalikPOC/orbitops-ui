@@ -94,6 +94,7 @@ export const copy = {
     empty:
       "Nothing here yet. Build in your org, then use “Pull my changes” to bring your work in.",
     showDetails: "Show technical details",
+    visualComparison: "Visual comparison",
     removeSelected: (n: number) => (n ? `Remove ${n} selected from this change` : "Remove selected"),
     askForHelp: "Ask a developer for help",
     inProgress: "Being built",

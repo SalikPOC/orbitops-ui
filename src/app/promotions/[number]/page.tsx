@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { marked } from "marked";
 import { copy } from "@/lib/copy";
-import { getPipeline, getPromotion, getPromotionFiles, getSourceOrgs, getStickyComment } from "@/lib/data";
+import { getFlowDiffs, getPipeline, getPromotion, getPromotionFiles, getSourceOrgs, getStickyComment } from "@/lib/data";
 import { summarizeMetadataPath } from "@/lib/metadata-summary";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Chip, WorkItemBadge } from "@/components/chips";
@@ -22,6 +22,7 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
     getPromotionFiles(promotion.baseBranch, promotion.headBranch),
     getSourceOrgs(),
   ]);
+  const flowDiffsP = getFlowDiffs(promotion.baseBranch, promotion.headBranch, files);
   const failing = promotion.checks.some((c) => c.status === "failure");
   const running = promotion.checks.some((c) => c.status === "pending");
   const blocked = failing || running || promotion.mergeable === false;
@@ -59,6 +60,7 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
         sourceOrgs={sourceOrgs}
         prNumber={promotion.number}
         conflicted={promotion.mergeable === false}
+        flowDiffs={await flowDiffsP}
       />
 
       {preview && (

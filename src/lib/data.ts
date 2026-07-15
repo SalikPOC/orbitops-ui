@@ -174,6 +174,43 @@ export async function getPromotionFiles(
   return (cmp.data.files ?? []).map((f) => ({ filename: f.filename, status: f.status, patch: f.patch }));
 }
 
+/** Visual flow diffs for every changed *.flow-meta.xml in a promotion. */
+export async function getFlowDiffs(
+  baseBranch: string,
+  headBranch: string,
+  files: { filename: string; status: string }[]
+): Promise<Record<string, import("./flow-diff").FlowDiffModel>> {
+  const { diffFlows } = await import("./flow-diff");
+  const flowFiles = files.filter((f) => f.filename.endsWith(".flow-meta.xml"));
+  if (!flowFiles.length) return {};
+
+  if (MOCK) {
+    const { caseRoutingBase, caseRoutingHead } = await import("../../fixtures/flows");
+    return Object.fromEntries(flowFiles.map((f) => [f.filename, diffFlows(caseRoutingBase, caseRoutingHead)]));
+  }
+
+  const gh = await getOctokit();
+  const fileAt = async (path: string, ref: string): Promise<string | null> => {
+    try {
+      const res = await gh.rest.repos.getContent({ owner: REPO_OWNER, repo: REPO_NAME, path, ref });
+      return Buffer.from((res.data as { content: string }).content, "base64").toString("utf8");
+    } catch (err: unknown) {
+      if ((err as { status?: number }).status === 404) return null;
+      throw err;
+    }
+  };
+  const entries = await Promise.all(
+    flowFiles.map(async (f) => {
+      const [baseXml, headXml] = await Promise.all([
+        fileAt(f.filename, baseBranch),
+        fileAt(f.filename, headBranch),
+      ]);
+      return [f.filename, diffFlows(baseXml, headXml)] as const;
+    })
+  );
+  return Object.fromEntries(entries);
+}
+
 /** Latest retrieve-workflow run for a work branch (via dispatch inputs we set). */
 export async function getActiveRetrieveRun(): Promise<{ status: string; url: string } | null> {
   if (MOCK) return null;

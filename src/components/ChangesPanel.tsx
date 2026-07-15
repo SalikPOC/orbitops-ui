@@ -3,6 +3,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { discardComponents, pullChanges, requestDeveloperHelp, type ActionResult } from "@/lib/actions";
 import { copy } from "@/lib/copy";
+import type { FlowDiffModel } from "@/lib/flow-diff";
+import { FlowDiffViewer } from "@/components/FlowDiffViewer";
 
 interface FileRow {
   filename: string;
@@ -34,13 +36,14 @@ function PatchView({ patch }: { patch: string }) {
   );
 }
 
-export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumber, conflicted }: {
+export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumber, conflicted, flowDiffs = {} }: {
   files: FileRow[];
   headBranch: string;
   baseBranch: string;
   sourceOrgs: { key: string; label: string }[];
   prNumber: number;
   conflicted: boolean;
+  flowDiffs?: Record<string, FlowDiffModel>;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sourceOrg, setSourceOrg] = useState(sourceOrgs[0]?.key ?? "INT");
@@ -113,6 +116,14 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
                     {f.summary}
                   </div>
                   <div className="truncate text-[11px] text-zinc-400">{f.filename}</div>
+                  {flowDiffs[f.filename] && (
+                    <details className="mt-1" open>
+                      <summary className="cursor-pointer text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                        {copy.changes.visualComparison}
+                      </summary>
+                      <FlowDiffViewer model={flowDiffs[f.filename]} />
+                    </details>
+                  )}
                   {f.patch && (
                     <details className="mt-1">
                       <summary className="cursor-pointer text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
