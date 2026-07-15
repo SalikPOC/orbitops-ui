@@ -35,8 +35,10 @@ export function authorizeUrl(loginUrl: string, redirectUri: string, challenge: s
   u.searchParams.set("code_challenge", challenge);
   u.searchParams.set("code_challenge_method", "S256");
   u.searchParams.set("state", state);
-  // No `prompt=login`: like other Salesforce tools, reuse an existing browser
-  // session when there is one — the consent screen still names the org user.
+  // Always show the login screen: silent session reuse connects whatever org the
+  // browser happens to be signed into — surprising and wrong-org-prone. The login
+  // page also carries the "Use Custom Domain" link for manual entry.
+  u.searchParams.set("prompt", "login");
   return u.toString();
 }
 
