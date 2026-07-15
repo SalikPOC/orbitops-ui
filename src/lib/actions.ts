@@ -134,9 +134,11 @@ export async function updateGates(
 }
 
 /**
- * Approve or reject a gate-held deployment from inside the app. Requires the
- * GitHub App to be a required reviewer on the environment (SETUP.md §3) — the
- * approval is recorded on GitHub as the app, authorized here by role check.
+ * Approve or reject a gate-held deployment from inside the app. Uses the
+ * signed-in user's own GitHub token (user-to-server) — the review is recorded
+ * as that person, who must be a required reviewer on the environment. (GitHub
+ * Apps can't be required reviewers on personal-account repos, so the
+ * installation token can't do this.)
  */
 export async function reviewDeployment(
   runId: number,
@@ -144,9 +146,13 @@ export async function reviewDeployment(
   comment: string
 ): Promise<ActionResult> {
   try {
-    const user = await requireRole("release-manager");
+    await requireRole("release-manager");
     if (MOCK) return { ok: true, message: state === "approved" ? "Approved! Releasing…" : "Rejected." };
-    const gh = await getOctokit();
+    const { getUserToken } = await import("@/auth");
+    const token = await getUserToken();
+    if (!token) return { ok: false, message: "Your GitHub session is missing — sign out and back in, then retry." };
+    const { Octokit } = await import("octokit");
+    const gh = new Octokit({ auth: token });
     const pending = await gh.rest.actions.getPendingDeploymentsForRun({
       owner: REPO_OWNER, repo: REPO_NAME, run_id: runId,
     });
@@ -158,15 +164,18 @@ export async function reviewDeployment(
       run_id: runId,
       environment_ids: envIds,
       state,
-      comment: `${state === "approved" ? "Approved" : "Rejected"} by ${user.login} via OrbitOps${comment ? ` — ${comment}` : ""}`,
+      comment: `${state === "approved" ? "Approved" : "Rejected"} via OrbitOps${comment ? ` — ${comment}` : ""}`,
     });
     return { ok: true, message: state === "approved" ? "Approved! Releasing…" : "Rejected — the release will not run." };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Something went wrong.";
+    if (/401|bad credentials/i.test(msg)) {
+      return { ok: false, message: "Your GitHub sign-in expired — sign out and back in, then retry." };
+    }
     return {
       ok: false,
-      message: /422|not.*(allowed|authorized)/i.test(msg)
-        ? "GitHub declined the review — add the OrbitOps app as a required reviewer on this environment (SETUP.md §3)."
+      message: /403|422|not.*(allowed|authorized)/i.test(msg)
+        ? "GitHub declined the review — check you're a required reviewer on this environment and that the app's Deployments permission is 'Read and write' (accept the permission update under Settings → Installations)."
         : msg,
     };
   }

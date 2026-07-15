@@ -391,7 +391,10 @@ export async function getPendingApprovals(
       environment: stage.environment,
       title: detail.data.display_title,
       startedAt: run.startedAt,
-      canApprove: gate.current_user_can_approve,
+      // Approval runs on the signed-in reviewer's own token; the role check
+      // (and GitHub's reviewer check) happen at action time, so always offer
+      // the buttons to release managers here.
+      canApprove: true,
       files,
     });
   }

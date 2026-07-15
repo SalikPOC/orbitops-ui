@@ -53,3 +53,6 @@ Secrets:write) · gate editor via config PRs · audit filters/CSV/DORA-lite tile
   ≥ dispatch time) to find the run, then clients poll `getRunState` via server
   actions (tokens stay server-side).
 - `js-yaml` in this Next version: use named import (`import { load } ...`).
+- GitHub Apps cannot be required reviewers on personal-account repos — in-app
+  deployment approvals use the signed-in user's user-to-server token
+  (persisted in the Auth.js JWT), acting as the human reviewer.

@@ -102,7 +102,7 @@ export const copy = {
     commentHint: "Optional note (audit log)",
     managerOnly: "A release manager can approve this from here.",
     appNotReviewer:
-      "To approve from here, add the OrbitOps app as a required reviewer on this environment (one-time GitHub setting).",
+      "To approve from here, the app needs its Deployments permission set to 'Read and write' (one-time GitHub setting).",
   },
 
   changes: {
