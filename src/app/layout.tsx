@@ -51,6 +51,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <div className="text-xs text-zinc-500">
                   <div className="font-medium text-zinc-700 dark:text-zinc-300">{user.login}</div>
                   <div>{copy.roles[user.role]}</div>
+                  {!MOCK && (
+                    // API route, not a page — plain anchor like sign-in
+                    // eslint-disable-next-line @next/next/no-html-link-for-pages
+                    <a href="/api/auth/signout" className="mt-1 inline-block underline hover:text-zinc-700 dark:hover:text-zinc-300">
+                      {copy.signOut}
+                    </a>
+                  )}
                 </div>
               ) : (
                 // API route, not a page — Link prefetch would break the OAuth redirect
