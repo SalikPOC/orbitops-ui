@@ -29,7 +29,27 @@ lives in sf-pipeline/CLAUDE.md.
 
 ## Status
 
-Phase 7 (foundation) done: shell, pipeline board, deployments, audit, stubs for
-rollback/settings; mock mode verified in browser. Next: Phase 8 (promotion flow
-+ live run view), Phase 9 (diffs/workspace), Phase 10 (rollback UI drives the
-rollback.yml workflow), Phase 11 (gate settings + audit export).
+All phases (7–12) complete plus post-plan additions. Feature set: pipeline board
+with live release indicators · start-a-change (work-item form, IDs normalized to
+uppercase) · pull-my-changes with run-polling progress banner · plain-language
+file list with per-component discard · **visual flow diff** (Flow-Builder card
+style, diff halos, zoom/fit/fullscreen — `src/lib/flow-diff.ts` +
+`FlowDiffViewer`) · promote with role/status guards · rollback UI (preview
+report from orbitops-meta/rollback-previews, type-to-confirm execute) ·
+Connect-an-org (OAuth+PKCE, sealed repo secrets — needs GitHub App
+Secrets:write) · gate editor via config PRs · audit filters/CSV/DORA-lite tiles.
+
+## Hard-won gotchas
+
+- React 19 resets uncontrolled forms after every form action — controlled
+  inputs wherever a failed validation must preserve what the user typed
+  (StartChangeForm).
+- Tailwind utility classes on SVG shapes are unreliable across build modes
+  (unstyled `<rect>` renders black) — FlowDiffViewer uses explicit fill/stroke
+  attributes only.
+- Auto-layout flows store `locationX/Y = 0` for every element — flow-diff.ts
+  detects this and computes a layered BFS layout (+ synthetic End card).
+- Workflow dispatch returns no run id — actions poll `findRecentRun` (created
+  ≥ dispatch time) to find the run, then clients poll `getRunState` via server
+  actions (tokens stay server-side).
+- `js-yaml` in this Next version: use named import (`import { load } ...`).

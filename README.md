@@ -1,32 +1,82 @@
 # OrbitOps UI
 
 Citizen-developer release console for the [sf-pipeline](https://github.com/SalikPOC/sf-pipeline)
-Salesforce CI/CD PoC — a DevOps-Center-like experience with pipeline visibility,
-promotions, deployment history, and UI-driven rollback.
+Salesforce CI/CD PoC — a DevOps-Center-like experience with no Git jargon anywhere.
+
+## What it does
+
+- **Pipeline board** — stages with current release, changes being built, changes
+  waiting to promote, live "Releasing…" / "Waiting for approval" indicators.
+- **Start a change** — work-item-tagged workspace created from a form (Jira
+  `PROJ-123` / Azure DevOps `AB#456` IDs, case-insensitive).
+- **Pull my changes** — retrieves the builder's org edits into their change via
+  the pipeline's `retrieve.yml`, with a live progress banner that polls the run
+  and refreshes the list on completion. Org picker covers configured dev orgs +
+  self-service connected orgs.
+- **Visual flow comparison** — changed/added flows render as Flow-Builder-style
+  card diagrams (type-colored icon tiles, connector spine, Start/End cards) with
+  green/amber/red diff halos, an element sidebar, zoom/fit controls, and a
+  fullscreen Expand mode. Auto-layout flows (which store no canvas coordinates)
+  get a computed layered layout.
+- **Promote** — checks summary, deploy preview (what will change), plain-language
+  file list with per-component curation (Remove selected), promote button with
+  role + status guards.
+- **Back out a release** — per-environment timeline from deploy manifests;
+  preview dispatches `rollback.yml` and renders the safety report (restore/remove
+  lists, data-loss warnings, validation verdict); execute is release-manager-only
+  with a mandatory reason and type-to-confirm, then live-polls the run.
+- **Connect an org** — OAuth + PKCE against Salesforce's own login page; the
+  refresh token is sealed server-side into a repo Actions secret and the org
+  joins the pull picker. The UI never sees passwords.
+- **Settings** — stage gates editable by release managers; changes open a
+  reviewed config PR against `pipeline.yml` (never a direct push).
+- **Activity log** — DORA-lite tiles (releases, back-outs, weekly activity,
+  back-out rate), stage/type filters, CSV export.
 
 ## Run it (mock mode — zero setup)
 
 ```bash
 npm install
-npm run dev        # .env.local ships with MOCK=1 → fixture data, auto signed-in
+npm run dev        # MOCK=1 → fixture data, auto signed-in as a release manager
 ```
 
-http://localhost:3000 — Pipeline board, Deployment history, Activity log all
-work from realistic fixture data.
+http://localhost:3000 — every page and interactive state works from fixtures,
+including the flow diff and rollback preview flows.
 
 ## Run it against the real pipeline
 
 1. Create the GitHub App and install it on `sf-pipeline`: **docs/GITHUB_APP.md**
-2. `cp .env.example .env.local`, fill in credentials, set `MOCK=0`
-3. `npm run dev` and sign in with GitHub
+   (note it needs **Secrets: Read and write** for Connect-an-org).
+2. `cp .env.example .env.local`, fill in credentials, set `MOCK=0`.
+   `SF_OAUTH_CLIENT_ID` (the OrbitOps CI connected app's consumer key) enables
+   Connect-an-org.
+3. `npm run dev` and sign in with GitHub.
 
 Localhost-only by design for the PoC: all GitHub traffic is outbound
 (REST polling + workflow dispatch), webhooks disabled, no tunnel needed.
 
 ## Design rules
 
-- Citizen-facing copy lives in `src/lib/copy.ts` — no Git jargon anywhere.
+- Citizen-facing copy lives in `src/lib/copy.ts` — no Git jargon anywhere
+  ("Promote", "change", "back out"; never merge/branch/commit/PR).
 - All GitHub access is server-side via an installation-scoped Octokit
-  (`src/lib/github.ts`); the browser never sees tokens.
+  (`src/lib/github.ts`); the browser never sees tokens. Long-running workflow
+  runs are polled through server actions for the same reason.
+- Every mutating server action checks the role server-side (`requireRole`) —
+  hidden buttons are UX, not security.
 - Roles map from username lists (`ROLE_RELEASE_MANAGERS`, `ROLE_ADMINS`) —
   swap for team slugs when moving to an org.
+- Mock mode must keep working for every new page and state (`fixtures/`).
+
+## Key modules
+
+```
+src/lib/data.ts          GitHub reads: pipeline.yml, manifests (orbitops-meta),
+                         PRs + checks, flow file versions, run status
+src/lib/actions.ts       server actions: promote, pull, discard, start change,
+                         submit, rollback preview/execute, gate PRs, run polling
+src/lib/flow-diff.ts     Flow XML parse + element-wise diff + auto-layout
+src/components/FlowDiffViewer.tsx   the Flow-Builder-style diff canvas
+src/lib/salesforce-oauth.ts / github-admin.ts   Connect-an-org (PKCE, sealed secrets)
+src/lib/copy.ts          every citizen-facing string
+```

@@ -26,6 +26,7 @@ github.com → Settings → Developer settings → GitHub Apps → **New GitHub 
 | Actions | Read and write |
 | Deployments | Read-only |
 | Environments | Read-only |
+| Secrets | Read and write (Connect-an-org seals `DEV_*_SF_AUTH_URL` repo secrets) |
 | Metadata | Read-only (mandatory) |
 
 **Where can this app be installed:** Only on this account.
