@@ -24,7 +24,7 @@ github.com → Settings → Developer settings → GitHub Apps → **New GitHub 
 | Pull requests | Read and write |
 | Checks | Read-only |
 | Actions | Read and write |
-| Deployments | Read-only |
+| Deployments | Read and write (in-app approval of gated releases) |
 | Environments | Read-only |
 | Secrets | Read and write (Connect-an-org seals `DEV_*_SF_AUTH_URL` repo secrets) |
 | Metadata | Read-only (mandatory) |

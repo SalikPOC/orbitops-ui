@@ -5,9 +5,13 @@ import {
   getDeployHistory,
   getInProgressChanges,
   getOpenPromotions,
+  getPendingApprovals,
   getPipeline,
+  type PendingApproval,
 } from "@/lib/data";
+import { getSessionUser } from "@/auth";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { ApprovalCard } from "@/components/ApprovalCard";
 import { Chip, WorkItemBadge } from "@/components/chips";
 import { buildAttention, fmtAge, type AttentionItem } from "@/lib/attention";
 import type { Promotion } from "@/lib/types";
@@ -27,11 +31,22 @@ const attentionStyle: Record<AttentionItem["severity"], { row: string; dot: stri
   },
 };
 
-function AttentionStrip({ items }: { items: AttentionItem[] }) {
+function AttentionStrip({ items, approvals, isReleaseManager }: {
+  items: AttentionItem[];
+  approvals: PendingApproval[];
+  isReleaseManager: boolean;
+}) {
   return (
     <section className="mb-6">
       <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">{copy.attention.title}</h2>
-      {items.length === 0 ? (
+      {approvals.length > 0 && (
+        <div className="mb-2 space-y-2">
+          {approvals.map((a) => (
+            <ApprovalCard key={a.runId} approval={a} isReleaseManager={isReleaseManager} />
+          ))}
+        </div>
+      )}
+      {items.length === 0 && approvals.length > 0 ? null : items.length === 0 ? (
         <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           {copy.attention.allQuiet}
@@ -101,14 +116,20 @@ function PromotionCard({ p }: { p: Promotion }) {
 
 export default async function PipelinePage() {
   const stages = await getPipeline();
-  const [histories, promotions, activeRuns, inProgress] = await Promise.all([
+  const [histories, promotions, activeRuns, inProgress, approvals, user] = await Promise.all([
     Promise.all(stages.map((s) => getDeployHistory(s.environment))),
     getOpenPromotions(stages.map((s) => s.branch)),
     Promise.all(stages.map((s) => getActiveDeployRun(s.branch))),
     getInProgressChanges(stages[0]?.branch ?? "integration"),
+    getPendingApprovals(stages),
+    getSessionUser(),
   ]);
+  const isReleaseManager = user?.role === "release-manager" || user?.role === "admin";
 
-  const attention = buildAttention(stages, promotions, activeRuns);
+  const approvedEnvs = new Set(approvals.map((a) => a.environment));
+  const attention = buildAttention(stages, promotions, activeRuns).filter(
+    (item) => !approvals.length || !approvedEnvs.size || !item.text.includes("waiting for release-manager approval")
+  );
 
   return (
     <div>
@@ -122,7 +143,7 @@ export default async function PipelinePage() {
           {copy.startChange.button}
         </Link>
       </div>
-      <AttentionStrip items={attention} />
+      <AttentionStrip items={attention} approvals={approvals} isReleaseManager={isReleaseManager} />
       {inProgress.length > 0 && (
         <section className="mb-6">
           <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">

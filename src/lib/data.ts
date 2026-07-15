@@ -328,16 +328,81 @@ export async function getStickyComment(prNumber: number, marker: string): Promis
 }
 
 export interface ActiveRun {
+  id: number;
   status: string;
   url: string;
   startedAt: string; // ISO — lets the UI show "for 18h" so stuck runs are visible
+}
+
+export interface PendingApproval {
+  runId: number;
+  runUrl: string;
+  environment: string;
+  title: string; // the run's display title (merge commit subject)
+  startedAt: string;
+  canApprove: boolean; // false until the GitHub App is a required reviewer on the env
+  files: { filename: string; status: string }[]; // what will deploy: last release tag → branch head
+}
+
+/** Gate-held deploys across all stages, with a what-will-deploy preview. */
+export async function getPendingApprovals(
+  stages: { branch: string; environment: string }[]
+): Promise<PendingApproval[]> {
+  if (MOCK) {
+    return [
+      {
+        runId: 1,
+        runUrl: "https://github.com",
+        environment: "uat",
+        title: "Merge pull request #6 — Add discount tracking to Clinic (POC-7)",
+        startedAt: new Date(Date.now() - 90 * 60_000).toISOString(),
+        canApprove: true,
+        files: [
+          { filename: "force-app/main/default/objects/BUP_Clinic__c/fields/Discount__c.field-meta.xml", status: "added" },
+          { filename: "force-app/main/default/flows/Case_Routing.flow-meta.xml", status: "modified" },
+        ],
+      },
+    ];
+  }
+  const gh = await getOctokit();
+  const out: PendingApproval[] = [];
+  for (const stage of stages) {
+    const run = await getActiveDeployRun(stage.branch);
+    if (!run || run.status !== "waiting") continue;
+    const [pending, history] = await Promise.all([
+      gh.rest.actions.getPendingDeploymentsForRun({ owner: REPO_OWNER, repo: REPO_NAME, run_id: run.id }),
+      getDeployHistory(stage.environment),
+    ]);
+    const gate = pending.data.find((p) => p.environment?.name === stage.environment) ?? pending.data[0];
+    if (!gate) continue;
+    const lastSeq = history.find((m) => m.type === "deploy" || m.type === "rollback")?.seq;
+    let files: PendingApproval["files"] = [];
+    if (lastSeq !== undefined) {
+      try {
+        files = await getPromotionFiles(`deploy/${stage.environment}/${lastSeq}`, stage.branch);
+      } catch {
+        files = []; // preview is best-effort; approval still works without it
+      }
+    }
+    const detail = await gh.rest.actions.getWorkflowRun({ owner: REPO_OWNER, repo: REPO_NAME, run_id: run.id });
+    out.push({
+      runId: run.id,
+      runUrl: run.url,
+      environment: stage.environment,
+      title: detail.data.display_title,
+      startedAt: run.startedAt,
+      canApprove: gate.current_user_can_approve,
+      files,
+    });
+  }
+  return out;
 }
 
 /** Latest deploy-workflow run for a stage branch, when one is active or gated. */
 export async function getActiveDeployRun(branch: string): Promise<ActiveRun | null> {
   if (MOCK) {
     return branch === "uat"
-      ? { status: "waiting", url: "https://github.com", startedAt: new Date(Date.now() - 90 * 60_000).toISOString() }
+      ? { id: 1, status: "waiting", url: "https://github.com", startedAt: new Date(Date.now() - 90 * 60_000).toISOString() }
       : null;
   }
   const gh = await getOctokit();
@@ -352,7 +417,7 @@ export async function getActiveDeployRun(branch: string): Promise<ActiveRun | nu
   if (!run) return null;
   const active = ["in_progress", "queued", "waiting", "requested", "pending"];
   if (!active.includes(run.status ?? "")) return null;
-  return { status: run.status!, url: run.html_url, startedAt: run.run_started_at ?? run.created_at };
+  return { id: run.id, status: run.status!, url: run.html_url, startedAt: run.run_started_at ?? run.created_at };
 }
 
 /**

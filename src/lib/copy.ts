@@ -61,7 +61,7 @@ export const copy = {
     confirmLabel: (env: string) => `Type ${env} to confirm`,
     executeButton: "Back out this release",
     executing: "Backing out…",
-    waitingGate: "Waiting for release manager approval on GitHub…",
+    waitingGate: "Waiting for release manager approval…",
     done: (env: string) => `Done — ${env} has been backed out. The timeline below is updated.`,
     failed: "The back out failed — open the run for details.",
     managerOnly: "Only release managers can execute a back out.",
@@ -92,6 +92,17 @@ export const copy = {
   attention: {
     title: "Needs attention",
     allQuiet: "All quiet — nothing is waiting on anyone.",
+  },
+
+  approvals: {
+    waiting: (age: string) => `release waiting for approval (${age})`,
+    whatWillDeploy: (n: number) => `What will deploy (${n} component${n === 1 ? "" : "s"})`,
+    approve: "Approve & release",
+    reject: "Reject",
+    commentHint: "Optional note (audit log)",
+    managerOnly: "A release manager can approve this from here.",
+    appNotReviewer:
+      "To approve from here, add the OrbitOps app as a required reviewer on this environment (one-time GitHub setting).",
   },
 
   changes: {

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { copy } from "@/lib/copy";
-import { executeRollback, pollRollback, startRollbackPreview } from "@/lib/actions";
+import { executeRollback, pollRollback, reviewDeployment, startRollbackPreview } from "@/lib/actions";
 import type { DeployManifest } from "@/lib/types";
 import type { RollbackPreview } from "@/lib/data";
 import { WorkItemBadge } from "@/components/chips";
@@ -229,14 +229,27 @@ export function RollbackPanel({ env, target, history, isReleaseManager }: {
       )}
 
       {state.phase === "executing" && (
-        <p className="animate-pulse text-sm text-zinc-600 dark:text-zinc-300">
-          {state.waiting ? copy.rollback.waitingGate : copy.rollback.executing}{" "}
-          {state.url && (
-            <a href={state.url} target="_blank" rel="noreferrer" className="text-indigo-600 underline dark:text-indigo-400">
-              {copy.rollback.openRun}
-            </a>
+        <div>
+          <p className="animate-pulse text-sm text-zinc-600 dark:text-zinc-300">
+            {state.waiting ? copy.rollback.waitingGate : copy.rollback.executing}{" "}
+            {state.url && (
+              <a href={state.url} target="_blank" rel="noreferrer" className="text-indigo-600 underline dark:text-indigo-400">
+                {copy.rollback.openRun}
+              </a>
+            )}
+          </p>
+          {state.waiting && state.runId && isReleaseManager && (
+            <button
+              onClick={async () => {
+                const r = await reviewDeployment(state.runId!, "approved", `Back out ${env} to #${target.seq}`);
+                setError(r.ok ? null : r.message);
+              }}
+              className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+            >
+              {copy.approvals.approve}
+            </button>
           )}
-        </p>
+        </div>
       )}
 
       {state.phase === "done" && (

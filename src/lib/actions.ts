@@ -133,6 +133,45 @@ export async function updateGates(
   }
 }
 
+/**
+ * Approve or reject a gate-held deployment from inside the app. Requires the
+ * GitHub App to be a required reviewer on the environment (SETUP.md §3) — the
+ * approval is recorded on GitHub as the app, authorized here by role check.
+ */
+export async function reviewDeployment(
+  runId: number,
+  state: "approved" | "rejected",
+  comment: string
+): Promise<ActionResult> {
+  try {
+    const user = await requireRole("release-manager");
+    if (MOCK) return { ok: true, message: state === "approved" ? "Approved! Releasing…" : "Rejected." };
+    const gh = await getOctokit();
+    const pending = await gh.rest.actions.getPendingDeploymentsForRun({
+      owner: REPO_OWNER, repo: REPO_NAME, run_id: runId,
+    });
+    const envIds = pending.data.map((p) => p.environment?.id).filter((id): id is number => id !== undefined);
+    if (!envIds.length) return { ok: false, message: "Nothing is waiting for approval on that release." };
+    await gh.rest.actions.reviewPendingDeploymentsForRun({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      run_id: runId,
+      environment_ids: envIds,
+      state,
+      comment: `${state === "approved" ? "Approved" : "Rejected"} by ${user.login} via OrbitOps${comment ? ` — ${comment}` : ""}`,
+    });
+    return { ok: true, message: state === "approved" ? "Approved! Releasing…" : "Rejected — the release will not run." };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Something went wrong.";
+    return {
+      ok: false,
+      message: /422|not.*(allowed|authorized)/i.test(msg)
+        ? "GitHub declined the review — add the OrbitOps app as a required reviewer on this environment (SETUP.md §3)."
+        : msg,
+    };
+  }
+}
+
 export interface RollbackDispatch extends ActionResult {
   runId?: number;
   runUrl?: string;
