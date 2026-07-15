@@ -248,15 +248,19 @@ export async function submitForPromotion(
 }
 
 /** Dispatch the retrieve workflow: pull the builder's org edits into their branch. */
-export async function pullChanges(headBranch: string, sourceOrg: string): Promise<ActionResult> {
+export async function pullChanges(
+  headBranch: string,
+  sourceOrg: string
+): Promise<ActionResult & { runId?: number; runUrl?: string }> {
   try {
     await requireRole("citizen");
     if (!headBranch.startsWith("feature/")) {
       return { ok: false, message: "Changes can only be pulled into a work-item change." };
     }
     if (!/^[A-Z][A-Z0-9_]*$/.test(sourceOrg)) return { ok: false, message: "Unknown org." };
-    if (MOCK) return { ok: true, message: "Pulling your changes… (demo mode)" };
+    if (MOCK) return { ok: true, message: "Pulling your changes… (demo mode)", runId: 1, runUrl: "https://github.com" };
     const gh = await getOctokit();
+    const since = new Date(Date.now() - 5_000).toISOString();
     await gh.rest.actions.createWorkflowDispatch({
       owner: REPO_OWNER,
       repo: REPO_NAME,
@@ -264,13 +268,25 @@ export async function pullChanges(headBranch: string, sourceOrg: string): Promis
       ref: "main",
       inputs: { work_branch: headBranch, source_org: sourceOrg },
     });
-    return {
-      ok: true,
-      message: "Pulling your changes from the org — this takes a minute or two. The list below refreshes automatically.",
-    };
+    // Locate the dispatched run so the panel can show live progress.
+    const { findRecentRun } = await import("./data");
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 2_000));
+      const run = await findRecentRun("retrieve.yml", since);
+      if (run) return { ok: true, message: "Pulling your changes…", runId: run.id, runUrl: run.url };
+    }
+    return { ok: true, message: "Pulling your changes — check back in a minute." };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
   }
+}
+
+/** Poll a workflow run's state (server action keeps tokens server-side). */
+export async function getRunState(
+  runId: number
+): Promise<{ status: string; conclusion: string | null; url: string }> {
+  const { getRunStatus } = await import("./data");
+  return getRunStatus(runId);
 }
 
 /**

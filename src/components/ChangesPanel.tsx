@@ -1,7 +1,7 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { discardComponents, pullChanges, requestDeveloperHelp, type ActionResult } from "@/lib/actions";
+import { discardComponents, getRunState, pullChanges, requestDeveloperHelp, type ActionResult } from "@/lib/actions";
 import { copy } from "@/lib/copy";
 import type { FlowDiffModel } from "@/lib/flow-diff";
 import { FlowDiffViewer } from "@/components/FlowDiffViewer";
@@ -49,7 +49,14 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
   const [sourceOrg, setSourceOrg] = useState(sourceOrgs[0]?.key ?? "INT");
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
+  const [pull, setPull] = useState<
+    | { phase: "idle" }
+    | { phase: "running"; url?: string }
+    | { phase: "done"; ok: boolean; url?: string; hadFiles: number }
+  >({ phase: "idle" });
   const router = useRouter();
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
 
   const run = (fn: () => Promise<ActionResult>) =>
     startTransition(async () => {
@@ -57,6 +64,33 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
       setResult(r);
       if (r.ok) setTimeout(() => router.refresh(), 4000);
     });
+
+  const startPull = () =>
+    startTransition(async () => {
+      setResult(null);
+      setPull({ phase: "running" });
+      const r = await pullChanges(headBranch, sourceOrg);
+      if (!r.ok) {
+        setPull({ phase: "idle" });
+        setResult(r);
+        return;
+      }
+      if (!r.runId) return; // couldn't locate the run — leave the spinner; page auto-refresh takes over
+      setPull({ phase: "running", url: r.runUrl });
+      const before = files.length;
+      if (timer.current) clearInterval(timer.current);
+      timer.current = setInterval(async () => {
+        const s = await getRunState(r.runId!);
+        if (s.status === "completed") {
+          if (timer.current) clearInterval(timer.current);
+          timer.current = null;
+          setPull({ phase: "done", ok: s.conclusion === "success", url: s.url, hadFiles: before });
+          router.refresh();
+        }
+      }, 5_000);
+    });
+
+  const pulling = pull.phase === "running";
 
   const toggle = (f: string) =>
     setSelected((s) => {
@@ -87,14 +121,51 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
             </select>
           )}
           <button
-            onClick={() => run(() => pullChanges(headBranch, sourceOrg))}
-            disabled={pending}
+            onClick={startPull}
+            disabled={pending || pulling}
             className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
           >
-            {pending ? "Working…" : copy.changes.pull}
+            {pulling ? "Pulling…" : copy.changes.pull}
           </button>
         </div>
       </div>
+
+      {pulling && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300">
+          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25" />
+            <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+          </svg>
+          <span>{copy.changes.pulling}</span>
+          {pull.phase === "running" && pull.url && (
+            <a href={pull.url} target="_blank" rel="noreferrer" className="ml-auto text-xs font-medium underline">
+              {copy.changes.openRun}
+            </a>
+          )}
+        </div>
+      )}
+      {pull.phase === "done" && (
+        <div
+          className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+            pull.ok
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300"
+              : "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400"
+          }`}
+        >
+          <span>
+            {!pull.ok
+              ? copy.changes.pullFailed
+              : files.length > pull.hadFiles
+                ? copy.changes.pullDone
+                : copy.changes.pullNothing}
+          </span>
+          {pull.url && (
+            <a href={pull.url} target="_blank" rel="noreferrer" className="ml-auto text-xs font-medium underline">
+              {copy.changes.openRun}
+            </a>
+          )}
+        </div>
+      )}
 
       {files.length === 0 ? (
         <p className="text-sm text-zinc-500">{copy.changes.empty}</p>
@@ -143,7 +214,7 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
         {files.length > 0 && (
           <button
             onClick={() => run(() => discardComponents(headBranch, baseBranch, [...selected]))}
-            disabled={pending || selected.size === 0}
+            disabled={pending || pulling || selected.size === 0}
             className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
           >
             {copy.changes.removeSelected(selected.size)}
@@ -152,7 +223,7 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
         {conflicted && (
           <button
             onClick={() => run(() => requestDeveloperHelp(prNumber))}
-            disabled={pending}
+            disabled={pending || pulling}
             className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-40 dark:border-amber-900 dark:text-amber-400 dark:hover:bg-amber-900/20"
           >
             {copy.changes.askForHelp}
