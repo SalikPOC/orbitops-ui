@@ -1,23 +1,28 @@
 "use client";
 import { useMemo, useState } from "react";
-import type { FlowDiffModel, FlowNode, FlowNodeStatus } from "@/lib/flow-diff";
+import type { FlowDiffModel, FlowNodeStatus } from "@/lib/flow-diff";
 import { kindLabel } from "@/lib/flow-diff";
 
 const NODE_W = 168;
 const NODE_H = 52;
 
-const statusStyle: Record<FlowNodeStatus, { box: string; text: string; badge: string }> = {
-  added: { box: "fill-emerald-50 stroke-emerald-500", text: "fill-emerald-900", badge: "New" },
-  changed: { box: "fill-amber-50 stroke-amber-500", text: "fill-amber-900", badge: "Changed" },
-  removed: { box: "fill-red-50 stroke-red-400", text: "fill-red-900", badge: "Removed" },
-  unchanged: { box: "fill-white stroke-zinc-300", text: "fill-zinc-700", badge: "" },
+// Explicit SVG colors — Tailwind utility classes on SVG shapes proved unreliable
+// across build modes (an unstyled <rect> renders BLACK); attributes can't purge.
+const PALETTE: Record<FlowNodeStatus, { fill: string; stroke: string; text: string; badge: string; dot: string }> = {
+  added: { fill: "#ecfdf5", stroke: "#10b981", text: "#065f46", badge: "New", dot: "#10b981" },
+  changed: { fill: "#fffbeb", stroke: "#f59e0b", text: "#92400e", badge: "Changed", dot: "#f59e0b" },
+  removed: { fill: "#fef2f2", stroke: "#f87171", text: "#991b1b", badge: "Removed", dot: "#f87171" },
+  unchanged: { fill: "#ffffff", stroke: "#d4d4d8", text: "#3f3f46", badge: "", dot: "#d4d4d8" },
 };
-const edgeColor: Record<FlowNodeStatus, string> = {
-  added: "stroke-emerald-500",
-  removed: "stroke-red-400",
-  changed: "stroke-amber-500",
-  unchanged: "stroke-zinc-300",
-};
+
+function Dot({ status }: { status: FlowNodeStatus }) {
+  return (
+    <span
+      className="inline-block h-2 w-2 rounded-full"
+      style={{ backgroundColor: PALETTE[status].dot }}
+    />
+  );
+}
 
 function Legend() {
   const items: [FlowNodeStatus, string][] = [
@@ -26,17 +31,11 @@ function Legend() {
     ["removed", "Removed"],
     ["unchanged", "Unchanged"],
   ];
-  const dot: Record<FlowNodeStatus, string> = {
-    added: "bg-emerald-500",
-    changed: "bg-amber-500",
-    removed: "bg-red-400",
-    unchanged: "bg-zinc-300",
-  };
   return (
     <div className="flex gap-3 text-[11px] text-zinc-500">
       {items.map(([s, label]) => (
         <span key={s} className="flex items-center gap-1">
-          <span className={`inline-block h-2 w-2 rounded-full ${dot[s]}`} /> {label}
+          <Dot status={s} /> {label}
         </span>
       ))}
     </div>
@@ -92,14 +91,10 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
                   focus === n.name ? "border-indigo-500" : "border-zinc-200 dark:border-zinc-700"
                 } bg-white dark:bg-zinc-800`}
               >
-                <span
-                  className={`mr-1 inline-block h-2 w-2 rounded-full ${
-                    n.status === "added" ? "bg-emerald-500" : n.status === "changed" ? "bg-amber-500" : "bg-red-400"
-                  }`}
-                />
+                <span className="mr-1 inline-block align-middle"><Dot status={n.status} /></span>
                 <span className="font-medium">{n.label}</span>
                 <span className="block pl-3 text-[10px] text-zinc-400">
-                  {kindLabel(n.kind)} · {statusStyle[n.status].badge}
+                  {kindLabel(n.kind)} · {PALETTE[n.status].badge}
                 </span>
               </button>
             ))}
@@ -108,11 +103,7 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
               key={l.name}
               className="block w-full rounded-lg border border-dashed border-zinc-200 px-2 py-1 text-left text-xs dark:border-zinc-700"
             >
-              <span
-                className={`mr-1 inline-block h-2 w-2 rounded-full ${
-                  l.status === "added" ? "bg-emerald-500" : l.status === "changed" ? "bg-amber-500" : "bg-red-400"
-                }`}
-              />
+              <span className="mr-1 inline-block align-middle"><Dot status={l.status} /></span>
               <span className="font-medium">{l.name}</span>
               <span className="block pl-3 text-[10px] text-zinc-400">{l.kind} (logic)</span>
             </div>
@@ -122,12 +113,12 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
           )}
         </div>
 
-        {/* Canvas — Flow Builder coordinates straight from the XML */}
-        <div className="grow overflow-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950" style={{ maxHeight: 420 }}>
+        {/* Canvas — always light for diagram contrast */}
+        <div className="grow overflow-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-700" style={{ maxHeight: 420 }}>
           <svg width={width * 0.9} height={height * 0.9} viewBox={`${minX} ${minY} ${width} ${height}`}>
             <defs>
               <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                <path d="M0,0 L8,4 L0,8 z" className="fill-zinc-400" />
+                <path d="M0,0 L8,4 L0,8 z" fill="#a1a1aa" />
               </marker>
             </defs>
             {model.edges.map((e, i) => {
@@ -142,13 +133,13 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
                   <path
                     d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
                     fill="none"
+                    stroke={PALETTE[e.status].stroke}
                     strokeWidth={e.status === "unchanged" ? 1.5 : 2.5}
                     strokeDasharray={e.status === "removed" ? "5 4" : undefined}
-                    className={edgeColor[e.status]}
                     markerEnd="url(#arrow)"
                   />
                   {e.label && (
-                    <text x={(x1 + x2) / 2} y={midY - 4} textAnchor="middle" className="fill-zinc-400 text-[10px]">
+                    <text x={(x1 + x2) / 2} y={midY - 4} textAnchor="middle" fontSize={10} fill="#a1a1aa">
                       {e.label}
                     </text>
                   )}
@@ -156,19 +147,20 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
               );
             })}
             {model.nodes.map((n) => (
-              <g key={n.name} opacity={n.status === "removed" ? 0.6 : 1}>
+              <g key={n.name} opacity={n.status === "removed" ? 0.65 : 1}>
                 <rect
                   x={n.x} y={n.y} width={NODE_W} height={NODE_H} rx={10}
+                  fill={PALETTE[n.status].fill}
+                  stroke={focus === n.name ? "#6366f1" : PALETTE[n.status].stroke}
                   strokeWidth={focus === n.name ? 3 : n.status === "unchanged" ? 1 : 2}
                   strokeDasharray={n.status === "removed" ? "6 4" : undefined}
-                  className={`${statusStyle[n.status].box} ${focus === n.name ? "stroke-indigo-500" : ""}`}
                 />
-                <text x={n.x + NODE_W / 2} y={n.y + 21} textAnchor="middle" className={`text-[12px] font-semibold ${statusStyle[n.status].text}`}>
+                <text x={n.x + NODE_W / 2} y={n.y + 21} textAnchor="middle" fontSize={12} fontWeight={600} fill={PALETTE[n.status].text}>
                   {n.label.length > 22 ? n.label.slice(0, 21) + "…" : n.label}
                 </text>
-                <text x={n.x + NODE_W / 2} y={n.y + 38} textAnchor="middle" className="fill-zinc-400 text-[10px]">
+                <text x={n.x + NODE_W / 2} y={n.y + 38} textAnchor="middle" fontSize={10} fill="#a1a1aa">
                   {kindLabel(n.kind)}
-                  {statusStyle[n.status].badge && ` · ${statusStyle[n.status].badge}`}
+                  {PALETTE[n.status].badge && ` · ${PALETTE[n.status].badge}`}
                 </text>
               </g>
             ))}

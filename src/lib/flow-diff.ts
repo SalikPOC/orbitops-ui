@@ -178,6 +178,13 @@ export function diffFlows(baseXml: string | null, headXml: string | null): FlowD
     if (status !== "unchanged") logicChanges.push({ name, kind: (h ?? b)!.kind, status });
   }
 
+  // Auto-layout flows (the Flow Builder default since '23) store dummy
+  // coordinates — everything at 0,0. Detect and compute a layered layout.
+  const stacked = nodes.filter((n) => n.x === 0 && n.y === 0).length;
+  if (nodes.length > 1 && stacked > nodes.length / 2) {
+    autoLayout(nodes, edges);
+  }
+
   return {
     flowLabel: head?.label ?? base?.label ?? "Flow",
     statusBase: base?.status ?? null,
@@ -186,4 +193,36 @@ export function diffFlows(baseXml: string | null, headXml: string | null): FlowD
     edges,
     logicChanges,
   };
+}
+
+/** Simple layered layout: BFS depth from Start → rows; siblings spread as columns. */
+function autoLayout(nodes: FlowNode[], edges: FlowEdge[]): void {
+  const children = new Map<string, string[]>();
+  const hasIncoming = new Set<string>();
+  for (const e of edges) {
+    if (!children.has(e.from)) children.set(e.from, []);
+    children.get(e.from)!.push(e.to);
+    hasIncoming.add(e.to);
+  }
+  const roots = nodes.filter((n) => n.name === "__start__" || !hasIncoming.has(n.name));
+  const depth = new Map<string, number>();
+  const queue: [string, number][] = roots.map((r) => [r.name, 0]);
+  while (queue.length) {
+    const [name, d] = queue.shift()!;
+    if (depth.has(name) && depth.get(name)! >= d) continue;
+    depth.set(name, d);
+    for (const c of children.get(name) ?? []) queue.push([c, d + 1]);
+  }
+  const rows = new Map<number, FlowNode[]>();
+  for (const n of nodes) {
+    const d = depth.get(n.name) ?? (Math.max(0, ...depth.values()) + 1);
+    if (!rows.has(d)) rows.set(d, []);
+    rows.get(d)!.push(n);
+  }
+  for (const [d, row] of rows) {
+    row.forEach((n, i) => {
+      n.x = (i - (row.length - 1) / 2) * 230 + 300;
+      n.y = d * 150;
+    });
+  }
 }
