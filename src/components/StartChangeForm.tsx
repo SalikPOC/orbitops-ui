@@ -10,6 +10,10 @@ const inputCls =
 export function StartChangeForm({ stages }: { stages: { branch: string; environment: string }[] }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
+  // Controlled inputs: React 19 resets uncontrolled forms after every action,
+  // which wiped what the user typed whenever validation failed.
+  const [workItem, setWorkItem] = useState("");
+  const [description, setDescription] = useState("");
   const router = useRouter();
 
   return (
@@ -25,12 +29,26 @@ export function StartChangeForm({ stages }: { stages: { branch: string; environm
     >
       <div>
         <label className="mb-1 block text-sm font-medium">{copy.startChange.workItemLabel}</label>
-        <input name="workItem" placeholder="PROJ-123" className={inputCls} required />
+        <input
+          name="workItem"
+          value={workItem}
+          onChange={(e) => setWorkItem(e.target.value)}
+          placeholder="PROJ-123"
+          className={inputCls}
+          required
+        />
         <p className="mt-1 text-xs text-zinc-500">{copy.startChange.workItemHint}</p>
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium">{copy.startChange.descriptionLabel}</label>
-        <input name="description" placeholder="Add discount tracking to Clinic" className={inputCls} required />
+        <input
+          name="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Add discount tracking to Clinic"
+          className={inputCls}
+          required
+        />
         <p className="mt-1 text-xs text-zinc-500">{copy.startChange.descriptionHint}</p>
       </div>
       <div>

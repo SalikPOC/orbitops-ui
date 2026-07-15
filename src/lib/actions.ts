@@ -372,7 +372,8 @@ export async function startChange(
 ): Promise<ActionResult & { branch?: string }> {
   try {
     await requireRole("citizen");
-    const workItem = String(formData.get("workItem") ?? "").trim();
+    // Normalize: trim + uppercase so "proj-123" and "ab#456" are accepted as typed.
+    const workItem = String(formData.get("workItem") ?? "").trim().toUpperCase();
     const description = String(formData.get("description") ?? "").trim();
     const sourceBranch = String(formData.get("sourceBranch") ?? "integration").trim();
 
