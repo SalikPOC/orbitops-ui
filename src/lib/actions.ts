@@ -66,6 +66,84 @@ export async function promote(prNumber: number): Promise<ActionResult> {
   }
 }
 
+export interface RollbackDispatch extends ActionResult {
+  runId?: number;
+  runUrl?: string;
+}
+
+async function dispatchRollback(
+  env: string,
+  targetSeq: number,
+  includeDestructive: boolean,
+  mode: "preview" | "execute",
+  reason: string
+): Promise<RollbackDispatch> {
+  if (MOCK) return { ok: true, message: "Dispatched (demo mode)", runId: 1, runUrl: "https://github.com" };
+  const gh = await getOctokit();
+  const since = new Date(Date.now() - 5_000).toISOString();
+  await gh.rest.actions.createWorkflowDispatch({
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    workflow_id: "rollback.yml",
+    ref: "main",
+    inputs: {
+      env,
+      target_seq: String(targetSeq),
+      mode,
+      include_destructive: includeDestructive,
+      reason,
+    },
+  });
+  // Find the run we just dispatched (dispatch API returns no id).
+  const { findRecentRun } = await import("./data");
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 2_000));
+    const run = await findRecentRun("rollback.yml", since);
+    if (run) return { ok: true, message: "Started.", runId: run.id, runUrl: run.url };
+  }
+  return { ok: true, message: "Started — open the activity log if it doesn't appear shortly." };
+}
+
+/** Validate-only rollback preview: safe for any signed-in user. */
+export async function startRollbackPreview(
+  env: string,
+  targetSeq: number,
+  includeDestructive: boolean
+): Promise<RollbackDispatch> {
+  try {
+    await requireRole("citizen");
+    return await dispatchRollback(env, targetSeq, includeDestructive, "preview", "UI preview");
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+/** Execute a rollback: release managers only, reason mandatory (audit). */
+export async function executeRollback(
+  env: string,
+  targetSeq: number,
+  includeDestructive: boolean,
+  reason: string
+): Promise<RollbackDispatch> {
+  try {
+    await requireRole("release-manager");
+    if (!reason.trim()) return { ok: false, message: "A reason is required — it goes in the activity log." };
+    return await dispatchRollback(env, targetSeq, includeDestructive, "execute", reason.trim());
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+/** Poll helper for client components (server action keeps tokens server-side). */
+export async function pollRollback(
+  runId: number
+): Promise<{ status: string; conclusion: string | null; url: string; preview: unknown | null }> {
+  const { getRunStatus, getRollbackPreview } = await import("./data");
+  const run = await getRunStatus(runId);
+  const preview = run.status === "completed" ? await getRollbackPreview(String(runId)) : null;
+  return { ...run, preview };
+}
+
 /** Create the promotion (PR) for a work branch once it has real changes in it. */
 export async function submitForPromotion(
   headBranch: string,

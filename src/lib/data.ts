@@ -190,6 +190,89 @@ export async function getActiveRetrieveRun(): Promise<{ status: string; url: str
   return active.includes(run.status ?? "") ? { status: run.status!, url: run.html_url } : null;
 }
 
+export interface RollbackPreview {
+  env: string;
+  targetSeq: number;
+  currentSeq: number;
+  includeDestructive: boolean;
+  safety: {
+    changed: Record<string, string[]>;
+    destructive: Record<string, string[]>;
+    changedCount: number;
+    destructiveCount: number;
+    warnings: { severity: string; type: string; member: string; text: string }[];
+    highRiskCount: number;
+  };
+  validation: { succeeded: boolean; errors: string | null };
+  runId: string;
+  timestamp: string;
+}
+
+/** Preview report published by the rollback workflow, or null while it's still running. */
+export async function getRollbackPreview(runId: string): Promise<RollbackPreview | null> {
+  if (MOCK) {
+    return {
+      env: "integration",
+      targetSeq: 1,
+      currentSeq: 3,
+      includeDestructive: true,
+      safety: {
+        changed: {},
+        destructive: { CustomField: ["BUP_Clinic__c.Notes__c"] },
+        changedCount: 0,
+        destructiveCount: 1,
+        warnings: [
+          {
+            severity: "high",
+            type: "CustomField",
+            member: "BUP_Clinic__c.Notes__c",
+            text: "🔴 Deleting a field permanently destroys all data stored in it. This cannot be undone.",
+          },
+        ],
+        highRiskCount: 1,
+      },
+      validation: { succeeded: true, errors: null },
+      runId,
+      timestamp: new Date().toISOString(),
+    };
+  }
+  const gh = await getOctokit();
+  try {
+    const res = await gh.rest.repos.getContent({
+      owner: REPO_OWNER, repo: REPO_NAME, path: `rollback-previews/${runId}.json`, ref: "orbitops-meta",
+    });
+    return JSON.parse(Buffer.from((res.data as { content: string }).content, "base64").toString("utf8"));
+  } catch (err: unknown) {
+    if ((err as { status?: number }).status === 404) return null;
+    throw err;
+  }
+}
+
+/** Newest run of a workflow created at/after the given time (to find our dispatch). */
+export async function findRecentRun(
+  workflowFile: string,
+  sinceIso: string
+): Promise<{ id: number; status: string; conclusion: string | null; url: string } | null> {
+  if (MOCK) return { id: 1, status: "completed", conclusion: "success", url: "https://github.com" };
+  const gh = await getOctokit();
+  const runs = await gh.rest.actions.listWorkflowRuns({
+    owner: REPO_OWNER, repo: REPO_NAME, workflow_id: workflowFile, per_page: 5, created: `>=${sinceIso}`,
+  });
+  const run = runs.data.workflow_runs[0];
+  return run
+    ? { id: run.id, status: run.status ?? "queued", conclusion: run.conclusion, url: run.html_url }
+    : null;
+}
+
+export async function getRunStatus(
+  runId: number
+): Promise<{ status: string; conclusion: string | null; url: string }> {
+  if (MOCK) return { status: "completed", conclusion: "success", url: "https://github.com" };
+  const gh = await getOctokit();
+  const run = await gh.rest.actions.getWorkflowRun({ owner: REPO_OWNER, repo: REPO_NAME, run_id: runId });
+  return { status: run.data.status ?? "queued", conclusion: run.data.conclusion, url: run.data.html_url };
+}
+
 /** Body of the workflow-authored sticky comment carrying the given marker, or null. */
 export async function getStickyComment(prNumber: number, marker: string): Promise<string | null> {
   if (MOCK) {
