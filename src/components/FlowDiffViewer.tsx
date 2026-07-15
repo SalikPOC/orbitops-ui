@@ -3,39 +3,149 @@ import { useMemo, useState } from "react";
 import type { FlowDiffModel, FlowNodeStatus } from "@/lib/flow-diff";
 import { kindLabel } from "@/lib/flow-diff";
 
-const NODE_W = 168;
-const NODE_H = 52;
+/**
+ * Flow-Builder-styled diff canvas: type-colored icon tiles (diamond decisions,
+ * green Start circle, pink data ops…), labels beneath, straight auto-layout
+ * connectors, dotted canvas. Diff status renders as a halo + corner dot so the
+ * Salesforce type colors stay authentic. Explicit SVG attributes throughout.
+ */
 
-// Explicit SVG colors — Tailwind utility classes on SVG shapes proved unreliable
-// across build modes (an unstyled <rect> renders BLACK); attributes can't purge.
-const PALETTE: Record<FlowNodeStatus, { fill: string; stroke: string; text: string; badge: string; dot: string }> = {
-  added: { fill: "#ecfdf5", stroke: "#10b981", text: "#065f46", badge: "New", dot: "#10b981" },
-  changed: { fill: "#fffbeb", stroke: "#f59e0b", text: "#92400e", badge: "Changed", dot: "#f59e0b" },
-  removed: { fill: "#fef2f2", stroke: "#f87171", text: "#991b1b", badge: "Removed", dot: "#f87171" },
-  unchanged: { fill: "#ffffff", stroke: "#d4d4d8", text: "#3f3f46", badge: "", dot: "#d4d4d8" },
+const CELL_W = 168; // logical grid cell (layout coordinates are top-left based)
+const ICON = 48;
+const NODE_TOTAL_H = 96; // icon + two text lines
+
+// Status (diff) colors — halo, corner dot, sidebar.
+const STATUS: Record<FlowNodeStatus, { color: string; badge: string }> = {
+  added: { color: "#2E844A", badge: "New" },
+  changed: { color: "#DD7A01", badge: "Changed" },
+  removed: { color: "#BA0517", badge: "Removed" },
+  unchanged: { color: "#C9C9C9", badge: "" },
 };
 
-function Dot({ status }: { status: FlowNodeStatus }) {
+// Salesforce Flow Builder element styling per kind.
+const KIND: Record<string, { color: string; shape: "square" | "diamond" | "circle" }> = {
+  start: { color: "#2E844A", shape: "circle" },
+  screens: { color: "#1B96FF", shape: "square" },
+  decisions: { color: "#DD7A01", shape: "diamond" },
+  assignments: { color: "#FF9A3C", shape: "square" },
+  recordCreates: { color: "#FF538A", shape: "square" },
+  recordUpdates: { color: "#FF538A", shape: "square" },
+  recordLookups: { color: "#FF538A", shape: "square" },
+  recordDeletes: { color: "#FF538A", shape: "square" },
+  actionCalls: { color: "#0B5CAB", shape: "square" },
+  subflows: { color: "#032D60", shape: "square" },
+  loops: { color: "#DD7A01", shape: "circle" },
+  waits: { color: "#706E6B", shape: "square" },
+  collectionProcessors: { color: "#06A59A", shape: "square" },
+  transforms: { color: "#06A59A", shape: "square" },
+  customErrors: { color: "#BA0517", shape: "square" },
+};
+const kindStyle = (k: string) => KIND[k] ?? { color: "#706E6B", shape: "square" as const };
+
+/** Minimal white glyphs echoing Flow Builder's icons. cx/cy = icon center. */
+function Glyph({ kind, cx, cy }: { kind: string; cx: number; cy: number }) {
+  const s = "#ffffff";
+  switch (kind) {
+    case "start":
+      return <path d={`M ${cx - 6} ${cy - 9} L ${cx + 10} ${cy} L ${cx - 6} ${cy + 9} Z`} fill={s} />;
+    case "decisions":
+      return (
+        <path
+          d={`M ${cx - 8} ${cy + 6} L ${cx} ${cy - 2} L ${cx + 8} ${cy + 6} M ${cx} ${cy - 2} L ${cx} ${cy - 9}`}
+          stroke={s} strokeWidth={2.5} fill="none" strokeLinecap="round"
+        />
+      );
+    case "assignments":
+      return (
+        <g stroke={s} strokeWidth={2.5} strokeLinecap="round">
+          <line x1={cx - 8} y1={cy - 4} x2={cx + 8} y2={cy - 4} />
+          <line x1={cx - 8} y1={cy + 4} x2={cx + 8} y2={cy + 4} />
+        </g>
+      );
+    case "recordCreates":
+    case "recordUpdates":
+    case "recordLookups":
+    case "recordDeletes":
+      return (
+        <g fill="none" stroke={s} strokeWidth={2}>
+          <ellipse cx={cx} cy={cy - 6} rx={9} ry={3.5} />
+          <path d={`M ${cx - 9} ${cy - 6} V ${cy + 6} A 9 3.5 0 0 0 ${cx + 9} ${cy + 6} V ${cy - 6}`} />
+        </g>
+      );
+    case "actionCalls":
+    case "subflows":
+      return <path d={`M ${cx + 2} ${cy - 10} L ${cx - 7} ${cy + 2} L ${cx - 1} ${cy + 2} L ${cx - 2} ${cy + 10} L ${cx + 7} ${cy - 2} L ${cx + 1} ${cy - 2} Z`} fill={s} />;
+    case "loops":
+      return (
+        <g fill="none" stroke={s} strokeWidth={2.5} strokeLinecap="round">
+          <path d={`M ${cx + 7} ${cy - 3} A 7.5 7.5 0 1 0 ${cx + 7} ${cy + 4}`} />
+          <path d={`M ${cx + 3} ${cy - 7} L ${cx + 8} ${cy - 3} L ${cx + 3} ${cy + 1}`} fill={s} stroke="none" />
+        </g>
+      );
+    case "screens":
+      return (
+        <g fill="none" stroke={s} strokeWidth={2}>
+          <rect x={cx - 9} y={cy - 8} width={18} height={13} rx={2} />
+          <line x1={cx - 4} y1={cy + 9} x2={cx + 4} y2={cy + 9} strokeLinecap="round" />
+        </g>
+      );
+    default:
+      return <circle cx={cx} cy={cy} r={4} fill={s} />;
+  }
+}
+
+function IconTile({ kind, x, y, status, focused }: {
+  kind: string; x: number; y: number; status: FlowNodeStatus; focused: boolean;
+}) {
+  const { color, shape } = kindStyle(kind);
+  const cx = x + CELL_W / 2;
+  const cy = y + ICON / 2;
+  const half = ICON / 2;
+  const haloColor = focused ? "#6366f1" : STATUS[status].color;
+  const showHalo = focused || status !== "unchanged";
+  const dash = status === "removed" ? "5 4" : undefined;
+
+  const body =
+    shape === "circle" ? (
+      <circle cx={cx} cy={cy} r={half - 4} fill={color} />
+    ) : shape === "diamond" ? (
+      <rect x={cx - half + 7} y={cy - half + 7} width={ICON - 14} height={ICON - 14} rx={6} fill={color} transform={`rotate(45 ${cx} ${cy})`} />
+    ) : (
+      <rect x={cx - half + 4} y={cy - half + 4} width={ICON - 8} height={ICON - 8} rx={10} fill={color} />
+    );
+
+  const halo =
+    shape === "circle" ? (
+      <circle cx={cx} cy={cy} r={half + 1} fill="none" stroke={haloColor} strokeWidth={2.5} strokeDasharray={dash} />
+    ) : shape === "diamond" ? (
+      <rect x={cx - half + 2} y={cy - half + 2} width={ICON - 4} height={ICON - 4} rx={8} fill="none" stroke={haloColor} strokeWidth={2.5} strokeDasharray={dash} transform={`rotate(45 ${cx} ${cy})`} />
+    ) : (
+      <rect x={cx - half - 1} y={cy - half - 1} width={ICON + 2} height={ICON + 2} rx={12} fill="none" stroke={haloColor} strokeWidth={2.5} strokeDasharray={dash} />
+    );
+
   return (
-    <span
-      className="inline-block h-2 w-2 rounded-full"
-      style={{ backgroundColor: PALETTE[status].dot }}
-    />
+    <g>
+      {showHalo && halo}
+      {body}
+      <Glyph kind={kind} cx={cx} cy={cy} />
+      {status !== "unchanged" && (
+        <circle cx={cx + half + 2} cy={cy - half + 2} r={5} fill={STATUS[status].color} stroke="#ffffff" strokeWidth={1.5} />
+      )}
+    </g>
   );
 }
 
+function Dot({ status }: { status: FlowNodeStatus }) {
+  return <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: STATUS[status].color }} />;
+}
+
 function Legend() {
-  const items: [FlowNodeStatus, string][] = [
-    ["added", "New"],
-    ["changed", "Changed"],
-    ["removed", "Removed"],
-    ["unchanged", "Unchanged"],
-  ];
+  const items: FlowNodeStatus[] = ["added", "changed", "removed"];
   return (
     <div className="flex gap-3 text-[11px] text-zinc-500">
-      {items.map(([s, label]) => (
+      {items.map((s) => (
         <span key={s} className="flex items-center gap-1">
-          <Dot status={s} /> {label}
+          <Dot status={s} /> {STATUS[s].badge}
         </span>
       ))}
     </div>
@@ -49,13 +159,13 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
   const { minX, minY, width, height } = useMemo(() => {
     const xs = model.nodes.map((n) => n.x);
     const ys = model.nodes.map((n) => n.y);
-    const minX = Math.min(...xs, 0) - 40;
-    const minY = Math.min(...ys, 0) - 40;
+    const minX = Math.min(...xs, 0) - 50;
+    const minY = Math.min(...ys, 0) - 30;
     return {
       minX,
       minY,
-      width: Math.max(...xs, 200) - minX + NODE_W + 80,
-      height: Math.max(...ys, 200) - minY + NODE_H + 80,
+      width: Math.max(...xs, 200) - minX + CELL_W + 100,
+      height: Math.max(...ys, 150) - minY + NODE_TOTAL_H + 60,
     };
   }, [model.nodes]);
 
@@ -79,8 +189,7 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
       </div>
 
       <div className="flex gap-3">
-        {/* Element sidebar (Gearset-style overview) */}
-        <div className="w-48 shrink-0 space-y-1 overflow-auto" style={{ maxHeight: 420 }}>
+        <div className="w-48 shrink-0 space-y-1 overflow-auto" style={{ maxHeight: 440 }}>
           {model.nodes
             .filter((n) => n.status !== "unchanged")
             .map((n) => (
@@ -94,15 +203,12 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
                 <span className="mr-1 inline-block align-middle"><Dot status={n.status} /></span>
                 <span className="font-medium">{n.label}</span>
                 <span className="block pl-3 text-[10px] text-zinc-400">
-                  {kindLabel(n.kind)} · {PALETTE[n.status].badge}
+                  {kindLabel(n.kind)} · {STATUS[n.status].badge}
                 </span>
               </button>
             ))}
           {model.logicChanges.map((l) => (
-            <div
-              key={l.name}
-              className="block w-full rounded-lg border border-dashed border-zinc-200 px-2 py-1 text-left text-xs dark:border-zinc-700"
-            >
+            <div key={l.name} className="block w-full rounded-lg border border-dashed border-zinc-200 px-2 py-1 text-left text-xs dark:border-zinc-700">
               <span className="mr-1 inline-block align-middle"><Dot status={l.status} /></span>
               <span className="font-medium">{l.name}</span>
               <span className="block pl-3 text-[10px] text-zinc-400">{l.kind} (logic)</span>
@@ -113,54 +219,55 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
           )}
         </div>
 
-        {/* Canvas — always light for diagram contrast */}
-        <div className="grow overflow-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-700" style={{ maxHeight: 420 }}>
-          <svg width={width * 0.9} height={height * 0.9} viewBox={`${minX} ${minY} ${width} ${height}`}>
+        {/* Canvas — Flow Builder dotted background, always light */}
+        <div className="grow overflow-auto rounded-lg border border-zinc-200 dark:border-zinc-700" style={{ maxHeight: 440, background: "#ffffff" }}>
+          <svg width={width * 0.95} height={height * 0.95} viewBox={`${minX} ${minY} ${width} ${height}`}>
             <defs>
-              <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                <path d="M0,0 L8,4 L0,8 z" fill="#a1a1aa" />
+              <pattern id="flowdots" width="22" height="22" patternUnits="userSpaceOnUse">
+                <circle cx="1.5" cy="1.5" r="1.2" fill="#e4e4e7" />
+              </pattern>
+              <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 z" fill="#939393" />
               </marker>
             </defs>
+            <rect x={minX} y={minY} width={width} height={height} fill="url(#flowdots)" />
+
             {model.edges.map((e, i) => {
               const a = byName.get(e.from);
               const b = byName.get(e.to);
               if (!a || !b) return null;
-              const x1 = a.x + NODE_W / 2, y1 = a.y + NODE_H;
-              const x2 = b.x + NODE_W / 2, y2 = b.y;
-              const midY = (y1 + y2) / 2;
+              // Depart below the label block (icon + two text lines), arrive at icon top.
+              const x1 = a.x + CELL_W / 2, y1 = a.y + ICON + 42;
+              const x2 = b.x + CELL_W / 2, y2 = b.y - 6;
+              const stroke = e.status === "unchanged" ? "#939393" : STATUS[e.status].color;
+              const d =
+                x1 === x2
+                  ? `M ${x1} ${y1} L ${x2} ${y2}` // straight, Flow-Builder auto-layout style
+                  : `M ${x1} ${y1} L ${x1} ${(y1 + y2) / 2} L ${x2} ${(y1 + y2) / 2} L ${x2} ${y2}`;
               return (
                 <g key={i}>
-                  <path
-                    d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
-                    fill="none"
-                    stroke={PALETTE[e.status].stroke}
-                    strokeWidth={e.status === "unchanged" ? 1.5 : 2.5}
-                    strokeDasharray={e.status === "removed" ? "5 4" : undefined}
-                    markerEnd="url(#arrow)"
-                  />
+                  <path d={d} fill="none" stroke={stroke} strokeWidth={e.status === "unchanged" ? 1.5 : 2.5}
+                    strokeDasharray={e.status === "removed" ? "5 4" : undefined} markerEnd="url(#arrow)" />
                   {e.label && (
-                    <text x={(x1 + x2) / 2} y={midY - 4} textAnchor="middle" fontSize={10} fill="#a1a1aa">
-                      {e.label}
-                    </text>
+                    <g>
+                      <rect x={(x1 + x2) / 2 - e.label.length * 3.2 - 5} y={(y1 + y2) / 2 - 9} width={e.label.length * 6.4 + 10} height={16} rx={8} fill="#f4f4f5" stroke="#e4e4e7" />
+                      <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 + 3} textAnchor="middle" fontSize={10} fill="#52525b">
+                        {e.label}
+                      </text>
+                    </g>
                   )}
                 </g>
               );
             })}
+
             {model.nodes.map((n) => (
-              <g key={n.name} opacity={n.status === "removed" ? 0.65 : 1}>
-                <rect
-                  x={n.x} y={n.y} width={NODE_W} height={NODE_H} rx={10}
-                  fill={PALETTE[n.status].fill}
-                  stroke={focus === n.name ? "#6366f1" : PALETTE[n.status].stroke}
-                  strokeWidth={focus === n.name ? 3 : n.status === "unchanged" ? 1 : 2}
-                  strokeDasharray={n.status === "removed" ? "6 4" : undefined}
-                />
-                <text x={n.x + NODE_W / 2} y={n.y + 21} textAnchor="middle" fontSize={12} fontWeight={600} fill={PALETTE[n.status].text}>
-                  {n.label.length > 22 ? n.label.slice(0, 21) + "…" : n.label}
+              <g key={n.name} opacity={n.status === "removed" ? 0.6 : 1} onClick={() => setFocus(n.name === focus ? null : n.name)} style={{ cursor: "pointer" }}>
+                <IconTile kind={n.kind} x={n.x} y={n.y} status={n.status} focused={focus === n.name} />
+                <text x={n.x + CELL_W / 2} y={n.y + ICON + 22} textAnchor="middle" fontSize={12.5} fontWeight={700} fill="#181818">
+                  {n.label.length > 24 ? n.label.slice(0, 23) + "…" : n.label}
                 </text>
-                <text x={n.x + NODE_W / 2} y={n.y + 38} textAnchor="middle" fontSize={10} fill="#a1a1aa">
+                <text x={n.x + CELL_W / 2} y={n.y + ICON + 37} textAnchor="middle" fontSize={10.5} fill="#706E6B">
                   {kindLabel(n.kind)}
-                  {PALETTE[n.status].badge && ` · ${PALETTE[n.status].badge}`}
                 </text>
               </g>
             ))}
