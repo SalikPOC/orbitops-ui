@@ -66,6 +66,73 @@ export async function promote(prNumber: number): Promise<ActionResult> {
   }
 }
 
+/**
+ * Update a stage's quality gates via a config PR (never a direct push — the
+ * pipeline config is CODEOWNERS-reviewed). Surgical line edits preserve the
+ * file's comments.
+ */
+export async function updateGates(
+  stageBranch: string,
+  gates: { minCoverage: number; scannerMaxSeverity: number }
+): Promise<ActionResult & { prUrl?: string }> {
+  try {
+    await requireRole("release-manager");
+    const { minCoverage, scannerMaxSeverity } = gates;
+    if (!Number.isInteger(minCoverage) || minCoverage < 0 || minCoverage > 100)
+      return { ok: false, message: "Coverage must be between 0 and 100." };
+    if (!Number.isInteger(scannerMaxSeverity) || scannerMaxSeverity < 1 || scannerMaxSeverity > 5)
+      return { ok: false, message: "Scan severity must be between 1 and 5." };
+    if (MOCK) return { ok: true, message: "Change requested! (demo mode)", prUrl: "https://github.com" };
+
+    const gh = await getOctokit();
+    const path = ".orbitops/pipeline.yml";
+    const file = await gh.rest.repos.getContent({ owner: REPO_OWNER, repo: REPO_NAME, path, ref: "main" });
+    const raw = Buffer.from((file.data as { content: string }).content, "base64").toString("utf8");
+
+    const lines = raw.split("\n");
+    const start = lines.findIndex((l) => l.match(new RegExp(`^\\s*-\\s*branch:\\s*${stageBranch}\\s*$`)));
+    if (start === -1) return { ok: false, message: "Stage not found in the pipeline config." };
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (/^\s*-\s*branch:/.test(lines[i])) { end = i; break; }
+    }
+    let touched = 0;
+    for (let i = start; i < end; i++) {
+      if (/^\s*scannerMaxSeverity:/.test(lines[i])) { lines[i] = lines[i].replace(/:\s*\d+/, `: ${scannerMaxSeverity}`); touched++; }
+      if (/^\s*minCoverage:/.test(lines[i])) { lines[i] = lines[i].replace(/:\s*\d+/, `: ${minCoverage}`); touched++; }
+    }
+    if (touched < 2) return { ok: false, message: "Couldn't locate the gate settings for that stage." };
+    const updated = lines.join("\n");
+    if (updated === raw) return { ok: false, message: "Nothing changed." };
+
+    const mainRef = await gh.rest.git.getRef({ owner: REPO_OWNER, repo: REPO_NAME, ref: "heads/main" });
+    const branch = `orbitops/gates-${stageBranch}-${Date.now().toString(36)}`;
+    await gh.rest.git.createRef({
+      owner: REPO_OWNER, repo: REPO_NAME, ref: `refs/heads/${branch}`, sha: mainRef.data.object.sha,
+    });
+    await gh.rest.repos.createOrUpdateFileContents({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      path,
+      branch,
+      message: `Update ${stageBranch} gates: coverage ≥ ${minCoverage}%, scan blocks ≤ sev ${scannerMaxSeverity}\n\nWork-Items: POC-0`,
+      content: Buffer.from(updated).toString("base64"),
+      sha: (file.data as { sha: string }).sha,
+    });
+    const pr = await gh.rest.pulls.create({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      title: `Update ${stageBranch} stage gates (POC-0)`,
+      head: branch,
+      base: "main",
+      body: `Requested from OrbitOps settings.\n\n- Minimum coverage: **${minCoverage}%**\n- Scan blocks at severity ≤ **${scannerMaxSeverity}**\n\nWork-Items: POC-0`,
+    });
+    return { ok: true, message: "Change requested — it takes effect once the review is approved.", prUrl: pr.data.html_url };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
 export interface RollbackDispatch extends ActionResult {
   runId?: number;
   runUrl?: string;

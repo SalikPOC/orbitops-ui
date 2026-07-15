@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { copy } from "@/lib/copy";
 import { getPipeline, getSourceOrgs } from "@/lib/data";
+import { getSessionUser } from "@/auth";
+import { GateEditor } from "@/components/GateEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +11,13 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ connected?: string }>;
 }) {
-  const [{ connected }, stages, sourceOrgs] = await Promise.all([
+  const [{ connected }, stages, sourceOrgs, user] = await Promise.all([
     searchParams,
     getPipeline(),
     getSourceOrgs(),
+    getSessionUser(),
   ]);
+  const canEdit = user?.role === "release-manager" || user?.role === "admin";
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">{copy.settings.title}</h1>
@@ -50,8 +54,7 @@ export default async function SettingsPage({
           <thead className="bg-zinc-100 text-left text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800/60">
             <tr>
               <th className="px-4 py-2">Stage</th>
-              <th className="px-4 py-2">Scan blocks at</th>
-              <th className="px-4 py-2">Min coverage</th>
+              <th className="px-4 py-2" colSpan={2}>Quality gates</th>
               <th className="px-4 py-2">Approval</th>
             </tr>
           </thead>
@@ -59,15 +62,25 @@ export default async function SettingsPage({
             {stages.map((s) => (
               <tr key={s.environment}>
                 <td className="px-4 py-2 font-medium capitalize">{s.environment}</td>
-                <td className="px-4 py-2">severity ≤ {s.gates.scannerMaxSeverity}</td>
-                <td className="px-4 py-2">{s.gates.minCoverage}%</td>
+                <td className="px-4 py-2" colSpan={2}>
+                  <GateEditor
+                    stageBranch={s.branch}
+                    environment={s.environment}
+                    minCoverage={s.gates.minCoverage}
+                    scannerMaxSeverity={s.gates.scannerMaxSeverity}
+                    canEdit={canEdit}
+                  />
+                </td>
                 <td className="px-4 py-2">{s.gates.requiredReviewers ? "Release manager" : "None"}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-zinc-400">Editing gates from here arrives in a later step (changes go through review).</p>
+      <p className="mt-3 text-xs text-zinc-400">
+        Gate changes open a review (a config change request) — they take effect once approved and merged.
+        Approval requirements are managed in GitHub environment settings.
+      </p>
     </div>
   );
 }
