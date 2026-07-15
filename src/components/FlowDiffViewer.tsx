@@ -12,7 +12,21 @@ import { kindLabel } from "@/lib/flow-diff";
 
 const CELL_W = 168; // logical grid cell (layout coordinates are top-left based)
 const ICON = 48;
-const NODE_TOTAL_H = 96; // icon + two text lines
+const NODE_TOTAL_H = 112; // icon + type line + up to two label lines
+
+/** Wrap an element label into at most two ~22-char lines (Flow Builder style). */
+function wrapLabel(t: string): string[] {
+  if (t.length <= 22) return [t];
+  const words = t.split(" ");
+  let first = "";
+  while (words.length && (first ? first + " " + words[0] : words[0]).length <= 22) {
+    first = first ? `${first} ${words.shift()}` : (words.shift() as string);
+  }
+  if (!first) return [t.slice(0, 22), t.slice(22, 43) + (t.length > 43 ? "…" : "")];
+  let rest = words.join(" ");
+  if (rest.length > 22) rest = rest.slice(0, 21) + "…";
+  return rest ? [first, rest] : [first];
+}
 
 // Status (diff) colors — halo, corner dot, sidebar.
 const STATUS: Record<FlowNodeStatus, { color: string; badge: string }> = {
@@ -24,10 +38,10 @@ const STATUS: Record<FlowNodeStatus, { color: string; badge: string }> = {
 
 // Salesforce Flow Builder element styling per kind.
 const KIND: Record<string, { color: string; shape: "square" | "diamond" | "circle" }> = {
-  start: { color: "#2E844A", shape: "circle" },
+  start: { color: "#0B827C", shape: "circle" },
   screens: { color: "#1B96FF", shape: "square" },
   decisions: { color: "#DD7A01", shape: "diamond" },
-  assignments: { color: "#FF9A3C", shape: "square" },
+  assignments: { color: "#DD7A01", shape: "square" },
   recordCreates: { color: "#FF538A", shape: "square" },
   recordUpdates: { color: "#FF538A", shape: "square" },
   recordLookups: { color: "#FF538A", shape: "square" },
@@ -36,8 +50,8 @@ const KIND: Record<string, { color: string; shape: "square" | "diamond" | "circl
   subflows: { color: "#032D60", shape: "square" },
   loops: { color: "#DD7A01", shape: "circle" },
   waits: { color: "#706E6B", shape: "square" },
-  collectionProcessors: { color: "#06A59A", shape: "square" },
-  transforms: { color: "#06A59A", shape: "square" },
+  collectionProcessors: { color: "#DD7A01", shape: "square" },
+  transforms: { color: "#DD7A01", shape: "square" },
   customErrors: { color: "#BA0517", shape: "square" },
 };
 const kindStyle = (k: string) => KIND[k] ?? { color: "#706E6B", shape: "square" as const };
@@ -49,11 +63,14 @@ function Glyph({ kind, cx, cy }: { kind: string; cx: number; cy: number }) {
     case "start":
       return <path d={`M ${cx - 6} ${cy - 9} L ${cx + 10} ${cy} L ${cx - 6} ${cy + 9} Z`} fill={s} />;
     case "decisions":
+      // Flow Builder's "slider" decision glyph: bars with offset knobs.
       return (
-        <path
-          d={`M ${cx - 8} ${cy + 6} L ${cx} ${cy - 2} L ${cx + 8} ${cy + 6} M ${cx} ${cy - 2} L ${cx} ${cy - 9}`}
-          stroke={s} strokeWidth={2.5} fill="none" strokeLinecap="round"
-        />
+        <g stroke={s} strokeWidth={2.5} strokeLinecap="round">
+          <line x1={cx - 7} y1={cy - 4} x2={cx + 7} y2={cy - 4} />
+          <circle cx={cx + 3} cy={cy - 4} r={2.6} fill={s} stroke="none" />
+          <line x1={cx - 7} y1={cy + 4} x2={cx + 7} y2={cy + 4} />
+          <circle cx={cx - 3} cy={cy + 4} r={2.6} fill={s} stroke="none" />
+        </g>
       );
     case "assignments":
       return (
@@ -65,13 +82,40 @@ function Glyph({ kind, cx, cy }: { kind: string; cx: number; cy: number }) {
     case "recordCreates":
     case "recordUpdates":
     case "recordLookups":
-    case "recordDeletes":
-      return (
+    case "recordDeletes": {
+      // Flow Builder's clipboard glyph with a per-operation marker.
+      const clipboard = (
         <g fill="none" stroke={s} strokeWidth={2}>
-          <ellipse cx={cx} cy={cy - 6} rx={9} ry={3.5} />
-          <path d={`M ${cx - 9} ${cy - 6} V ${cy + 6} A 9 3.5 0 0 0 ${cx + 9} ${cy + 6} V ${cy - 6}`} />
+          <rect x={cx - 8} y={cy - 9} width={16} height={19} rx={2.5} />
+          <rect x={cx - 4} y={cy - 12} width={8} height={5} rx={1.5} fill={s} stroke="none" />
         </g>
       );
+      const marker =
+        kind === "recordCreates" ? (
+          <g stroke={s} strokeWidth={2.2} strokeLinecap="round">
+            <line x1={cx - 3.5} y1={cy + 1.5} x2={cx + 3.5} y2={cy + 1.5} />
+            <line x1={cx} y1={cy - 2} x2={cx} y2={cy + 5} />
+          </g>
+        ) : kind === "recordUpdates" ? (
+          <path d={`M ${cx - 3.5} ${cy + 4.5} L ${cx - 2.5} ${cy + 1} L ${cx + 3.5} ${cy - 5} L ${cx + 5} ${cy - 3.5} L ${cx - 1} ${cy + 2.5} Z`} fill={s} />
+        ) : kind === "recordLookups" ? (
+          <g fill="none" stroke={s} strokeWidth={2}>
+            <circle cx={cx - 1} cy={cy} r={3.2} />
+            <line x1={cx + 1.5} y1={cy + 2.5} x2={cx + 4.5} y2={cy + 5.5} strokeLinecap="round" />
+          </g>
+        ) : (
+          <g stroke={s} strokeWidth={2.2} strokeLinecap="round">
+            <line x1={cx - 3} y1={cy - 1.5} x2={cx + 3} y2={cy + 4.5} />
+            <line x1={cx + 3} y1={cy - 1.5} x2={cx - 3} y2={cy + 4.5} />
+          </g>
+        );
+      return (
+        <g>
+          {clipboard}
+          {marker}
+        </g>
+      );
+    }
     case "actionCalls":
     case "subflows":
       return <path d={`M ${cx + 2} ${cy - 10} L ${cx - 7} ${cy + 2} L ${cx - 1} ${cy + 2} L ${cx - 2} ${cy + 10} L ${cx + 7} ${cy - 2} L ${cx + 1} ${cy - 2} Z`} fill={s} />;
@@ -237,17 +281,19 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
               const b = byName.get(e.to);
               if (!a || !b) return null;
               // Depart below the label block (icon + two text lines), arrive at icon top.
-              const x1 = a.x + CELL_W / 2, y1 = a.y + ICON + 42;
+              const x1 = a.x + CELL_W / 2, y1 = a.y + ICON + 56;
               const x2 = b.x + CELL_W / 2, y2 = b.y - 6;
               const stroke = e.status === "unchanged" ? "#939393" : STATUS[e.status].color;
               const d =
                 x1 === x2
                   ? `M ${x1} ${y1} L ${x2} ${y2}` // straight, Flow-Builder auto-layout style
                   : `M ${x1} ${y1} L ${x1} ${(y1 + y2) / 2} L ${x2} ${(y1 + y2) / 2} L ${x2} ${y2}`;
+              const branchy = a.kind === "decisions" || a.kind === "loops" || a.kind === "waits";
               return (
                 <g key={i}>
                   <path d={d} fill="none" stroke={stroke} strokeWidth={e.status === "unchanged" ? 1.5 : 2.5}
                     strokeDasharray={e.status === "removed" ? "5 4" : undefined} markerEnd="url(#arrow)" />
+                  {branchy && <circle cx={x1} cy={y1} r={4} fill="#ffffff" stroke={stroke} strokeWidth={1.5} />}
                   {e.label && (
                     <g>
                       <rect x={(x1 + x2) / 2 - e.label.length * 3.2 - 5} y={(y1 + y2) / 2 - 9} width={e.label.length * 6.4 + 10} height={16} rx={8} fill="#f4f4f5" stroke="#e4e4e7" />
@@ -263,12 +309,15 @@ export function FlowDiffViewer({ model }: { model: FlowDiffModel }) {
             {model.nodes.map((n) => (
               <g key={n.name} opacity={n.status === "removed" ? 0.6 : 1} onClick={() => setFocus(n.name === focus ? null : n.name)} style={{ cursor: "pointer" }}>
                 <IconTile kind={n.kind} x={n.x} y={n.y} status={n.status} focused={focus === n.name} />
-                <text x={n.x + CELL_W / 2} y={n.y + ICON + 22} textAnchor="middle" fontSize={12.5} fontWeight={700} fill="#181818">
-                  {n.label.length > 24 ? n.label.slice(0, 23) + "…" : n.label}
-                </text>
-                <text x={n.x + CELL_W / 2} y={n.y + ICON + 37} textAnchor="middle" fontSize={10.5} fill="#706E6B">
+                {/* Flow Builder order: bold type name, element label beneath */}
+                <text x={n.x + CELL_W / 2} y={n.y + ICON + 20} textAnchor="middle" fontSize={12.5} fontWeight={700} fill="#181818">
                   {kindLabel(n.kind)}
                 </text>
+                {wrapLabel(n.label).map((line, li) => (
+                  <text key={li} x={n.x + CELL_W / 2} y={n.y + ICON + 35 + li * 13} textAnchor="middle" fontSize={11} fill="#444444">
+                    {line}
+                  </text>
+                ))}
               </g>
             ))}
           </svg>

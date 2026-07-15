@@ -222,7 +222,7 @@ function autoLayout(nodes: FlowNode[], edges: FlowEdge[]): void {
   for (const [d, row] of rows) {
     row.forEach((n, i) => {
       n.x = (i - (row.length - 1) / 2) * 230 + 300;
-      n.y = d * 150;
+      n.y = d * 180; // room for the icon + type + wrapped label block
     });
   }
 }
