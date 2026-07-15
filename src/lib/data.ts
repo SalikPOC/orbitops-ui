@@ -327,11 +327,19 @@ export async function getStickyComment(prNumber: number, marker: string): Promis
   return comments.data.find((c) => c.body?.includes(marker))?.body ?? null;
 }
 
+export interface ActiveRun {
+  status: string;
+  url: string;
+  startedAt: string; // ISO — lets the UI show "for 18h" so stuck runs are visible
+}
+
 /** Latest deploy-workflow run for a stage branch, when one is active or gated. */
-export async function getActiveDeployRun(
-  branch: string
-): Promise<{ status: string; url: string } | null> {
-  if (MOCK) return branch === "uat" ? { status: "waiting", url: "https://github.com" } : null;
+export async function getActiveDeployRun(branch: string): Promise<ActiveRun | null> {
+  if (MOCK) {
+    return branch === "uat"
+      ? { status: "waiting", url: "https://github.com", startedAt: new Date(Date.now() - 90 * 60_000).toISOString() }
+      : null;
+  }
   const gh = await getOctokit();
   const runs = await gh.rest.actions.listWorkflowRuns({
     owner: REPO_OWNER,
@@ -343,7 +351,8 @@ export async function getActiveDeployRun(
   const run = runs.data.workflow_runs[0];
   if (!run) return null;
   const active = ["in_progress", "queued", "waiting", "requested", "pending"];
-  return active.includes(run.status ?? "") ? { status: run.status!, url: run.html_url } : null;
+  if (!active.includes(run.status ?? "")) return null;
+  return { status: run.status!, url: run.html_url, startedAt: run.run_started_at ?? run.created_at };
 }
 
 /**

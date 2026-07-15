@@ -9,7 +9,59 @@ import {
 } from "@/lib/data";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Chip, WorkItemBadge } from "@/components/chips";
+import { buildAttention, fmtAge, type AttentionItem } from "@/lib/attention";
 import type { Promotion } from "@/lib/types";
+
+const attentionStyle: Record<AttentionItem["severity"], { row: string; dot: string }> = {
+  act: {
+    row: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200",
+    dot: "bg-amber-500",
+  },
+  warn: {
+    row: "border-red-300 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-900/20 dark:text-red-200",
+    dot: "bg-red-500",
+  },
+  ready: {
+    row: "border-indigo-200 bg-indigo-50 text-indigo-900 dark:border-indigo-900 dark:bg-indigo-900/20 dark:text-indigo-200",
+    dot: "bg-indigo-500",
+  },
+};
+
+function AttentionStrip({ items }: { items: AttentionItem[] }) {
+  return (
+    <section className="mb-6">
+      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">{copy.attention.title}</h2>
+      {items.length === 0 ? (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          {copy.attention.allQuiet}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item, i) => {
+            const s = attentionStyle[item.severity];
+            const action = item.external ? (
+              <a href={item.href} target="_blank" rel="noreferrer" className="ml-auto shrink-0 text-xs font-semibold underline">
+                {item.actionLabel} ↗
+              </a>
+            ) : (
+              <Link href={item.href} className="ml-auto shrink-0 text-xs font-semibold underline">
+                {item.actionLabel}
+              </Link>
+            );
+            return (
+              <div key={i} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm ${s.row}`}>
+                <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${s.dot}`} />
+                <span>{item.text}</span>
+                {action}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +108,8 @@ export default async function PipelinePage() {
     getInProgressChanges(stages[0]?.branch ?? "integration"),
   ]);
 
+  const attention = buildAttention(stages, promotions, activeRuns);
+
   return (
     <div>
       <AutoRefresh seconds={30} />
@@ -68,6 +122,7 @@ export default async function PipelinePage() {
           {copy.startChange.button}
         </Link>
       </div>
+      <AttentionStrip items={attention} />
       {inProgress.length > 0 && (
         <section className="mb-6">
           <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
@@ -125,9 +180,16 @@ export default async function PipelinePage() {
                   href={active.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="mb-3 block rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm font-medium text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-300"
+                  className={`mb-3 block rounded-xl border p-2.5 text-sm font-medium ${
+                    active.status === "waiting"
+                      ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200"
+                      : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-300"
+                  }`}
                 >
                   {active.status === "waiting" ? copy.releasing.waitingApproval : copy.releasing.inProgress}
+                  <span className="ml-1 font-normal opacity-70">
+                    · {copy.releasing.for} {fmtAge(active.startedAt)} ↗
+                  </span>
                 </a>
               )}
               <div className="mb-4 rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">

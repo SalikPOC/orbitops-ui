@@ -86,6 +86,12 @@ export const copy = {
   releasing: {
     inProgress: "Releasing…",
     waitingApproval: "Waiting for release manager approval",
+    for: "for",
+  },
+
+  attention: {
+    title: "Needs attention",
+    allQuiet: "All quiet — nothing is waiting on anyone.",
   },
 
   changes: {
