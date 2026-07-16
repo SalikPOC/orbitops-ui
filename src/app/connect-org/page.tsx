@@ -43,6 +43,9 @@ export default async function ConnectOrgPage({
           {copy.connectOrg.submit}
         </button>
         <p className="text-xs text-zinc-500">{copy.connectOrg.security}</p>
+        <p className="rounded-lg bg-zinc-100 p-2 text-xs text-zinc-500 dark:bg-zinc-800">
+          {copy.connectOrg.preAuthHint}
+        </p>
       </form>
     </div>
   );

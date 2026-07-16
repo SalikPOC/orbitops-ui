@@ -140,7 +140,9 @@ export const copy = {
       "Leave blank to sign in at the standard Salesforce login. Only fill this in if the connection fails — some orgs (like scratch orgs) require logging in at their own domain, e.g. mycompany--dev.sandbox.my.salesforce.com",
     submit: "Continue to Salesforce login",
     security:
-      "Salesforce gives OrbitOps a revocable access token, stored encrypted — you can disconnect any time from your org's Connected Apps settings.",
+      "OrbitOps stores no passwords or tokens for your org — signing in only verifies your access and records your username. Releases and pulls use a certificate your admin pre-authorized, revocable any time from the org's Connected Apps settings.",
+    preAuthHint:
+      "One-time setup per org (admin): Setup → Connected Apps OAuth Usage → OrbitOps CI → Install, then Manage → Permitted Users: “Admin approved users are pre-authorized” and add your profile.",
     connected: "Org connected! It's now available in the “Pull my changes” picker.",
     listTitle: "Connected orgs",
     none: "No orgs connected yet.",

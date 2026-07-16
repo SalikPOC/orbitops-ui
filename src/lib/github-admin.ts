@@ -34,10 +34,13 @@ export async function putRepoSecret(name: string, value: string): Promise<void> 
 export interface ConnectedOrg {
   name: string;
   org: string;
-  authMethod: "sfdx-url";
+  /** jwt = shared-certificate login (v2, no stored tokens); sfdx-url = legacy sealed secret. */
+  authMethod: "sfdx-url" | "jwt";
   connectedBy: string;
   connectedAt: string;
   instanceHost: string;
+  /** The org user CI acts as (jwt entries only). */
+  username?: string;
 }
 
 const REGISTRY_PATH = "connected-orgs.json";

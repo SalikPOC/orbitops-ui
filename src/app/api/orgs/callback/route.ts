@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeCode, testRefresh, toSfdxAuthUrl, CALLBACK_PATH } from "@/lib/salesforce-oauth";
-import { putRepoSecret, addConnectedOrg } from "@/lib/github-admin";
+import { exchangeCode, fetchUsername, CALLBACK_PATH } from "@/lib/salesforce-oauth";
+import { addConnectedOrg } from "@/lib/github-admin";
 
 /**
  * Step 2 of Connect-an-org: Salesforce redirected back with a code. Exchange it
- * (PKCE), verify the refresh token actually works, seal it into the repo secret,
- * and register the org. Tokens never reach the browser.
+ * (PKCE), read the signed-in user's identity, and register the org with just
+ * {username, instanceHost} — NO tokens are stored anywhere. CI authenticates
+ * via JWT with the shared OrbitOps CI certificate as that user, which requires
+ * the org admin to have pre-authorized the app (Install → admin-approved →
+ * profile/permission set). Salesforce force-rotates refresh tokens in new
+ * orgs, so stored tokens die on first use — JWT sidesteps tokens entirely.
  */
 export async function GET(req: NextRequest) {
   const fail = (msg: string) =>
@@ -38,12 +42,12 @@ export async function GET(req: NextRequest) {
   try {
     const redirectUri = new URL(CALLBACK_PATH, req.nextUrl.origin).toString();
     const token = await exchangeCode(ctx.loginUrl, redirectUri, code, ctx.verifier);
-    const liveToken = await testRefresh(ctx.loginUrl, token.refresh_token);
-    await putRepoSecret(`${ctx.key}_SF_AUTH_URL`, toSfdxAuthUrl(liveToken, token.instance_url));
+    const username = await fetchUsername(token.id, token.access_token);
     await addConnectedOrg({
       name: ctx.name,
       org: ctx.key,
-      authMethod: "sfdx-url",
+      authMethod: "jwt",
+      username,
       connectedBy: ctx.by,
       connectedAt: new Date().toISOString(),
       instanceHost: new URL(token.instance_url).host,

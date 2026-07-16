@@ -68,8 +68,21 @@ export async function exchangeCode(
   });
   const body = await res.json();
   if (!res.ok) throw new Error(`Salesforce rejected the connection: ${body.error_description ?? body.error}`);
-  if (!body.refresh_token) throw new Error("Salesforce did not return a refresh token (check the app's scopes).");
   return body as TokenResponse;
+}
+
+/**
+ * The username behind an OAuth grant, from the identity URL in the token
+ * response. Connect-an-org v2 stores ONLY this (plus the instance host):
+ * CI authenticates via JWT with the shared OrbitOps CI certificate, so no
+ * per-org token exists to expire or rotate.
+ */
+export async function fetchUsername(idUrl: string, accessToken: string): Promise<string> {
+  const res = await fetch(idUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw new Error("Could not read the connected user's identity — try again.");
+  const body = (await res.json()) as { username?: string };
+  if (!body.username) throw new Error("Salesforce identity response had no username.");
+  return body.username;
 }
 
 /** Prove the refresh token works before we save anything. */
