@@ -177,6 +177,33 @@ export async function getInProgressChanges(baseBranch: string): Promise<InProgre
   );
 }
 
+export interface WorkItemRelease {
+  workItem: string;
+  env: string;
+  seq: number;
+  timestamp: string;
+}
+
+/**
+ * Where these work items have already been released, from the deploy
+ * manifests — so the UI can warn before someone rebuilds shipped work.
+ */
+export async function getWorkItemReleases(
+  stages: { environment: string }[],
+  workItems: string[]
+): Promise<WorkItemRelease[]> {
+  if (!workItems.length) return [];
+  const releases: WorkItemRelease[] = [];
+  for (const stage of stages) {
+    const history = await getDeployHistory(stage.environment);
+    for (const wi of workItems) {
+      const hit = history.find((m) => m.type === "deploy" && m.workItems.includes(wi));
+      if (hit) releases.push({ workItem: wi, env: stage.environment, seq: hit.seq, timestamp: hit.timestamp });
+    }
+  }
+  return releases;
+}
+
 /** Changed files between a promotion's target and its work branch. */
 export async function getPromotionFiles(
   baseBranch: string,

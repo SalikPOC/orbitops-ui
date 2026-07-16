@@ -5,6 +5,7 @@ import { getSessionUser } from "@/auth";
 import { MOCK, REPO_OWNER, REPO_NAME } from "./env";
 import { getOctokit } from "./github";
 import { getPipeline, getPromotion } from "./data";
+import { copy } from "./copy";
 import type { Role } from "./types";
 
 export interface ActionResult {
@@ -302,6 +303,13 @@ export async function submitForPromotion(
     });
     if (existing.data[0]) {
       return { ok: true, message: "Already submitted.", prNumber: existing.data[0].number };
+    }
+    // Refuse promotions with nothing deployable — e.g. the work item was
+    // already released and a re-pull found only what the stage already has.
+    const { getPromotionFiles } = await import("./data");
+    const files = await getPromotionFiles(baseBranch, headBranch);
+    if (!files.some((f) => f.filename.startsWith("force-app/"))) {
+      return { ok: false, message: copy.submit.nothingDeployable };
     }
     const pr = await gh.rest.pulls.create({
       owner: REPO_OWNER,

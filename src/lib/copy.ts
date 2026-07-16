@@ -123,6 +123,8 @@ export const copy = {
     askForHelp: "Ask a developer for help",
     inProgress: "Being built",
     beingBuilt: "Changes being built",
+    alreadyReleased: (wi: string, envs: string) =>
+      `${wi} has already been released to ${envs}. Only pull changes here if you're building a follow-up fix — pulling the same work again has nothing new to promote.`,
     fromOrg: "Pull from which org",
     updates: (n: number) => (n === 0 ? "Nothing pulled in yet" : `${n} update${n === 1 ? "" : "s"} pulled in`),
   },
@@ -160,6 +162,8 @@ export const copy = {
     title: "Ready to go?",
     ready: "Submit this change to start the checks and get it ready to promote.",
     needChanges: "Pull your changes in first — there's nothing to submit yet.",
+    nothingDeployable:
+      "This change contains nothing new to release — everything in it is already in the target stage. There's nothing to promote.",
     button: "Submit for promotion",
   },
 

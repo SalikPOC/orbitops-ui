@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { copy } from "@/lib/copy";
-import { getFlowDiffs, getPipeline, getPromotionFiles, getSourceOrgs } from "@/lib/data";
+import { getFlowDiffs, getPipeline, getPromotionFiles, getSourceOrgs, getWorkItemReleases } from "@/lib/data";
 import { summarizeMetadataPath } from "@/lib/metadata-summary";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { WorkItemBadge } from "@/components/chips";
@@ -20,6 +20,7 @@ export default async function ChangePage({ params }: { params: Promise<{ branch:
   const flowDiffs = await getFlowDiffs(baseBranch, headBranch, files);
 
   const workItems = [...new Set(headBranch.match(/[A-Z][A-Z0-9]+-\d+|AB#\d+/g) ?? [])];
+  const releases = await getWorkItemReleases(stages, workItems);
   const slug = headBranch
     .replace(/^feature\//, "")
     .replace(/^([A-Z][A-Z0-9]+-\d+|AB#\d+)-?/, "")
@@ -39,6 +40,18 @@ export default async function ChangePage({ params }: { params: Promise<{ branch:
         </span>
       </div>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">{title}</h1>
+
+      {releases.length > 0 && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+          <span className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+          <span>
+            {copy.changes.alreadyReleased(
+              [...new Set(releases.map((r) => r.workItem))].join(", "),
+              [...new Set(releases.map((r) => r.env))].join(", ")
+            )}
+          </span>
+        </div>
+      )}
 
       <ChangesPanel
         files={files.map((f) => ({ ...f, summary: summarizeMetadataPath(f.filename, f.status) }))}
