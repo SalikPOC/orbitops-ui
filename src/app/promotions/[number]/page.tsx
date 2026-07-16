@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { marked } from "marked";
 import { copy } from "@/lib/copy";
@@ -41,6 +42,16 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
         by {promotion.author} → <span className="capitalize">{stage?.environment ?? promotion.baseBranch}</span>
       </p>
 
+      {promotion.merged && (
+        <div className="mb-6 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          {copy.pipeline.promoted(stage?.environment ?? promotion.baseBranch)}
+          <Link href="/pipeline" className="ml-auto shrink-0 text-xs font-semibold underline">
+            {copy.nav.pipeline}
+          </Link>
+        </div>
+      )}
+
       <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">Checks</h2>
         <div className="flex flex-wrap gap-1.5">
@@ -53,15 +64,17 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
         )}
       </section>
 
-      <ChangesPanel
-        files={files.map((f) => ({ ...f, summary: summarizeMetadataPath(f.filename, f.status) }))}
-        headBranch={promotion.headBranch}
-        baseBranch={promotion.baseBranch}
-        sourceOrgs={sourceOrgs}
-        prNumber={promotion.number}
-        conflicted={promotion.mergeable === false}
-        flowDiffs={await flowDiffsP}
-      />
+      {!promotion.merged && (
+        <ChangesPanel
+          files={files.map((f) => ({ ...f, summary: summarizeMetadataPath(f.filename, f.status) }))}
+          headBranch={promotion.headBranch}
+          baseBranch={promotion.baseBranch}
+          sourceOrgs={sourceOrgs}
+          prNumber={promotion.number}
+          conflicted={promotion.mergeable === false}
+          flowDiffs={await flowDiffsP}
+        />
+      )}
 
       {preview && (
         <section className="prose prose-sm prose-zinc mb-6 max-w-none rounded-2xl border border-zinc-200 bg-white p-4 dark:prose-invert dark:border-zinc-800 dark:bg-zinc-900 [&_h2]:mt-0">
@@ -70,6 +83,7 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
         </section>
       )}
 
+      {!promotion.merged && (
       <PromoteButton
         prNumber={promotion.number}
         label={copy.pipeline.promote(stage?.environment ?? promotion.baseBranch)}
@@ -84,7 +98,8 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
                 : undefined
         }
       />
-      {stage?.gates.requiredReviewers && (
+      )}
+      {!promotion.merged && stage?.gates.requiredReviewers && (
         <p className="mt-3 text-xs text-zinc-500">
           After promoting, a release manager approves the deployment before it reaches the org.
         </p>

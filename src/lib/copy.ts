@@ -23,6 +23,8 @@ export const copy = {
     noOpenPromotions: "No changes are waiting.",
     promote: (stage: string) => `Promote to ${stage}`,
     checksPassing: "All checks passing",
+    promoted: (stage: string) =>
+      `This change has been promoted — it's on its way to ${stage}. Watch progress on the pipeline board.`,
     checksFailing: "Some checks need attention",
     checksRunning: "Checks are running…",
     conflict: "This change overlaps with another change — a developer needs to take a look.",

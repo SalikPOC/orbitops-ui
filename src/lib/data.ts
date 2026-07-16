@@ -198,12 +198,19 @@ export async function getPromotionFiles(
     ];
   }
   const gh = await getOctokit();
-  const cmp = await gh.rest.repos.compareCommitsWithBasehead({
-    owner: REPO_OWNER,
-    repo: REPO_NAME,
-    basehead: `${baseBranch}...${headBranch}`,
-  });
-  return (cmp.data.files ?? []).map((f) => ({ filename: f.filename, status: f.status, patch: f.patch }));
+  try {
+    const cmp = await gh.rest.repos.compareCommitsWithBasehead({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      basehead: `${baseBranch}...${headBranch}`,
+    });
+    return (cmp.data.files ?? []).map((f) => ({ filename: f.filename, status: f.status, patch: f.patch }));
+  } catch (err: unknown) {
+    // 404 = one of the refs is gone (promote deletes the work branch) — the
+    // page should render its done/empty state, not crash.
+    if ((err as { status?: number }).status === 404) return [];
+    throw err;
+  }
 }
 
 /** Visual flow diffs for every changed *.flow-meta.xml in a promotion. */
@@ -495,6 +502,7 @@ export async function getPromotion(number: number): Promise<Promotion | null> {
       mergeable: pr.data.mergeable,
       url: pr.data.html_url,
       checks: toCheckChips(checks.data.check_runs),
+      merged: pr.data.merged,
     };
   } catch (err: unknown) {
     if ((err as { status?: number }).status === 404) return null;

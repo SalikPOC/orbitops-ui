@@ -50,6 +50,8 @@ export interface Promotion {
   mergeable: boolean | null;
   url: string;
   checks: CheckChip[];
+  /** True once the promotion has landed (page renders a done state, not actions). */
+  merged?: boolean;
 }
 
 export type Role = "citizen" | "release-manager" | "admin";
