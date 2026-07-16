@@ -59,6 +59,46 @@ export async function readConnectedOrgs(): Promise<ConnectedOrg[]> {
   }
 }
 
+/** Remove a connected org from the registry; returns the removed entry (or null). */
+export async function removeConnectedOrg(orgKey: string): Promise<ConnectedOrg | null> {
+  const gh = await getOctokit();
+  let sha: string | undefined;
+  let existing: ConnectedOrg[] = [];
+  try {
+    const res = await gh.rest.repos.getContent({
+      owner: REPO_OWNER, repo: REPO_NAME, path: REGISTRY_PATH, ref: META_BRANCH,
+    });
+    sha = (res.data as { sha: string }).sha;
+    existing = JSON.parse(Buffer.from((res.data as { content: string }).content, "base64").toString("utf8"));
+  } catch (err: unknown) {
+    if ((err as { status?: number }).status === 404) return null;
+    throw err;
+  }
+  const removed = existing.find((o) => o.org === orgKey) ?? null;
+  if (!removed) return null;
+  await gh.rest.repos.createOrUpdateFileContents({
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    path: REGISTRY_PATH,
+    ref: META_BRANCH,
+    branch: META_BRANCH,
+    message: `Disconnect org: ${removed.name} (${orgKey})`,
+    content: Buffer.from(JSON.stringify(existing.filter((o) => o.org !== orgKey), null, 2) + "\n").toString("base64"),
+    sha,
+  });
+  return removed;
+}
+
+/** Best-effort delete of a legacy sealed secret (v1 sfdx-url connections). */
+export async function deleteRepoSecret(name: string): Promise<void> {
+  const gh = await getOctokit();
+  try {
+    await gh.rest.actions.deleteRepoSecret({ owner: REPO_OWNER, repo: REPO_NAME, secret_name: name });
+  } catch {
+    /* absent or no permission — nothing to clean */
+  }
+}
+
 export async function addConnectedOrg(entry: ConnectedOrg): Promise<void> {
   const gh = await getOctokit();
   let sha: string | undefined;

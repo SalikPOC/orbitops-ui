@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { copy } from "@/lib/copy";
-import { getPipeline, getSourceOrgs } from "@/lib/data";
+import { getConnectedOrgEntries, getPipeline, getSourceOrgs } from "@/lib/data";
 import { getSessionUser } from "@/auth";
 import { GateEditor } from "@/components/GateEditor";
+import { ConnectedOrgsList } from "@/components/ConnectedOrgsList";
 
 export const dynamic = "force-dynamic";
 
@@ -11,13 +12,15 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ connected?: string }>;
 }) {
-  const [{ connected }, stages, sourceOrgs, user] = await Promise.all([
+  const [{ connected }, stages, sourceOrgs, connectedOrgs, user] = await Promise.all([
     searchParams,
     getPipeline(),
     getSourceOrgs(),
+    getConnectedOrgEntries(),
     getSessionUser(),
   ]);
   const canEdit = user?.role === "release-manager" || user?.role === "admin";
+  const configuredDevOrgs = sourceOrgs.filter((o) => !connectedOrgs.some((c) => c.org === o.key));
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">{copy.settings.title}</h1>
@@ -36,14 +39,13 @@ export default async function SettingsPage({
             {copy.connectOrg.button}
           </Link>
         </div>
-        {sourceOrgs.length === 0 ? (
-          <p className="text-sm text-zinc-500">{copy.connectOrg.none}</p>
-        ) : (
-          <ul className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200 bg-white text-sm dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
-            {sourceOrgs.map((o) => (
+        <ConnectedOrgsList orgs={connectedOrgs} />
+        {configuredDevOrgs.length > 0 && (
+          <ul className="mt-2 divide-y divide-zinc-100 overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white text-sm text-zinc-500 dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
+            {configuredDevOrgs.map((o) => (
               <li key={o.key} className="flex items-center justify-between px-4 py-2">
                 <span>{o.label}</span>
-                <span className="text-xs text-zinc-400">{o.key}</span>
+                <span className="text-xs text-zinc-400">{o.key} · configured in pipeline.yml</span>
               </li>
             ))}
           </ul>

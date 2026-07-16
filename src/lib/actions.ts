@@ -181,6 +181,29 @@ export async function reviewDeployment(
   }
 }
 
+/**
+ * Remove a connected org. Allowed for the person who connected it or a
+ * release manager. Legacy v1 connections also get their sealed secret deleted.
+ */
+export async function disconnectOrg(orgKey: string): Promise<ActionResult> {
+  try {
+    const user = await requireRole("citizen");
+    if (MOCK) return { ok: true, message: "Disconnected. (demo mode)" };
+    const { removeConnectedOrg, deleteRepoSecret, readConnectedOrgs } = await import("./github-admin");
+    const entry = (await readConnectedOrgs()).find((o) => o.org === orgKey);
+    if (!entry) return { ok: false, message: "That org is no longer connected." };
+    const isManager = user.role === "release-manager" || user.role === "admin";
+    if (!isManager && entry.connectedBy !== user.login) {
+      return { ok: false, message: `Only ${entry.connectedBy} or a release manager can disconnect this org.` };
+    }
+    await removeConnectedOrg(orgKey);
+    if (entry.authMethod === "sfdx-url") await deleteRepoSecret(`${orgKey}_SF_AUTH_URL`);
+    return { ok: true, message: `${entry.name} disconnected.` };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
 export interface RollbackDispatch extends ActionResult {
   runId?: number;
   runUrl?: string;

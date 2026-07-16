@@ -146,6 +146,12 @@ export const copy = {
     connected: "Org connected! It's now available in the “Pull my changes” picker.",
     listTitle: "Connected orgs",
     none: "No orgs connected yet.",
+    reconnect: "Reconnect",
+    disconnect: "Disconnect",
+    disconnectConfirm: (name: string) =>
+      `Disconnect “${name}”? Builders won't be able to pull changes from it until someone connects it again.`,
+    methodJwt: "certificate",
+    methodLegacy: "legacy token — reconnect to upgrade",
   },
 
   submit: {

@@ -53,6 +53,38 @@ export async function getSourceOrgs(): Promise<{ key: string; label: string }[]>
   return first ? [{ key: first.org, label: `${first.environment} org` }] : [];
 }
 
+/** Full UI-connected org entries for the Settings management list. */
+export async function getConnectedOrgEntries(): Promise<
+  { name: string; org: string; authMethod: "sfdx-url" | "jwt"; instanceHost: string; connectedBy: string }[]
+> {
+  if (MOCK) {
+    return [
+      {
+        name: "Demo connected org",
+        org: "DEV_DEMO_CONNECTED",
+        authMethod: "jwt",
+        instanceHost: "demo--dev.sandbox.my.salesforce.com",
+        connectedBy: "demo-user",
+      },
+      {
+        name: "Old-style connection",
+        org: "DEV_LEGACY",
+        authMethod: "sfdx-url",
+        instanceHost: "legacy--dev.sandbox.my.salesforce.com",
+        connectedBy: "demo-user",
+      },
+    ];
+  }
+  const { readConnectedOrgs } = await import("./github-admin");
+  return (await readConnectedOrgs()).map((o) => ({
+    name: o.name,
+    org: o.org,
+    authMethod: o.authMethod,
+    instanceHost: o.instanceHost,
+    connectedBy: o.connectedBy,
+  }));
+}
+
 export async function getDeployHistory(env: string): Promise<DeployManifest[]> {
   if (MOCK) return fixtureHistory.filter((m) => m.env === env).sort((a, b) => b.seq - a.seq);
   const gh = await getOctokit();
