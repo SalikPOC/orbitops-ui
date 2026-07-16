@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { fmtDateTime } from "@/lib/format";
 import { copy } from "@/lib/copy";
 import {
   getActiveDeployRun,
@@ -226,7 +227,7 @@ export default async function PipelinePage() {
                       </span>
                     )}
                     <div className="mt-0.5 text-xs text-zinc-500">
-                      {new Date(latest.timestamp).toLocaleString()} {copy.deployments.by} {latest.actor}
+                      {fmtDateTime(latest.timestamp)} {copy.deployments.by} {latest.actor}
                     </div>
                   </div>
                 ) : (

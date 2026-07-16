@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { fmtDateTime } from "@/lib/format";
 import { copy } from "@/lib/copy";
 import type { DeployManifest } from "@/lib/types";
 
@@ -67,7 +68,7 @@ export function AuditLog({ events }: { events: DeployManifest[] }) {
             {m.type === "rollback"
               ? `backed out ${m.env} to release #${m.rolledBackTo}`
               : `released #${m.seq} to ${m.env}`}
-            <span className="ml-2 text-xs text-zinc-400">{new Date(m.timestamp).toLocaleString()}</span>
+            <span className="ml-2 text-xs text-zinc-400">{fmtDateTime(m.timestamp)}</span>
             {m.reason && <div className="mt-1 text-xs text-zinc-500">Reason: {m.reason}</div>}
             <a
               href={m.runUrl}

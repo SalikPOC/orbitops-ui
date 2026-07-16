@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { fmtDateTime } from "@/lib/format";
 import { copy } from "@/lib/copy";
 import type { DeployManifest } from "@/lib/types";
 import { WorkItemBadge } from "@/components/chips";
@@ -41,7 +42,7 @@ export function RollbackTimeline({ env, history, isReleaseManager }: {
                 </span>
               )}
               <span className="ml-auto text-xs text-zinc-500">
-                {new Date(m.timestamp).toLocaleString()} {copy.deployments.by} {m.actor}
+                {fmtDateTime(m.timestamp)} {copy.deployments.by} {m.actor}
               </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">

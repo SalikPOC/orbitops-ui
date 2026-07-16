@@ -1,4 +1,5 @@
 import { copy } from "@/lib/copy";
+import { fmtDateTime } from "@/lib/format";
 import { getDeployHistory, getPipeline } from "@/lib/data";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { WorkItemBadge } from "@/components/chips";
@@ -66,7 +67,7 @@ export default async function DeploymentsPage() {
                           )}
                         </td>
                         <td className="px-4 py-2 text-xs text-zinc-500">
-                          {new Date(m.timestamp).toLocaleString()}
+                          {fmtDateTime(m.timestamp)}
                           <br />
                           {copy.deployments.by} {m.actor}
                         </td>
