@@ -8,18 +8,123 @@ export const copy = {
   tagline: "Release Salesforce changes with confidence",
 
   nav: {
+    myChanges: "My changes",
     pipeline: "Pipeline",
-    deployments: "Deployments",
+    deployments: "Release history",
     rollback: "Back out a release",
     settings: "Settings",
-    audit: "Activity log",
+    audit: "Audit & reporting",
+  },
+
+  myChanges: {
+    title: "My changes",
+    intro: "Every work item, where it is, and what happens next.",
+    none: "No changes yet — start one and it will show up here.",
+    columns: {
+      building: "Being built",
+      inFlight: "Checks & fixes",
+      ready: "Ready to promote",
+      released: "Released",
+    },
+    state: {
+      building: "Being built",
+      checks: "Checks running",
+      attention: "Needs attention",
+      conflict: "Needs a developer",
+      ready: "Ready to promote",
+      released: "Released",
+    } as Record<string, string>,
+    action: {
+      building: "Open workspace",
+      checks: "Watch checks",
+      attention: "See what failed",
+      conflict: "Open the change",
+      ready: (env: string) => `Promote to ${env}`,
+      released: "View release history",
+    },
+    envLegend: "Where it has been released",
+  },
+
+  /** The builder journey, always visible on a change so nobody guesses the next step. */
+  journey: {
+    steps: ["Build in your sandbox", "Pull changes", "Review & submit", "Checks", "Promote"],
+    done: "Promoted",
+  },
+
+  /**
+   * CI check names → citizen-friendly label + one-line explanation, plus
+   * what a failure means and what to do about it (shown in the
+   * "What needs attention" panel). Unmapped names fall through unchanged.
+   */
+  checkLabels: {
+    "Resolve stage": {
+      label: "Finding the target stage",
+      hint: "Works out which environment this change promotes to",
+      failed: "OrbitOps couldn't work out which stage this change should go to.",
+      fix: "This is a setup problem, not something you did. Ask a developer for help.",
+    },
+    "What will deploy": {
+      label: "What will deploy",
+      hint: "Lists the exact components that will go out",
+      failed: "OrbitOps couldn't build the list of what this change would release.",
+      fix: "Try “Pull my changes” again. If it still fails, ask a developer for help.",
+    },
+    "Work items": {
+      label: "Work item tag",
+      hint: "Confirms this change is linked to your ticket",
+      failed: "This change isn't linked to a valid work item, so it can't be traced back to a ticket.",
+      fix: "Check that the work item ID in the change matches your ticket — like PROJ-123 (Jira) or AB#456 (Azure DevOps). If it looks right, ask a developer for help.",
+    },
+    "Code scan": {
+      label: "Code scan",
+      hint: "Security and quality rules on anything code-like",
+      failed: "The automatic review found code-quality or security issues above what this stage allows.",
+      fix: "Fixing scan findings usually needs a developer. Open the full report to see each issue, or ask a developer for help.",
+    },
+    "Validate against target org": {
+      label: "Salesforce validation",
+      hint: "Salesforce test-applied this change against the target org",
+      failed: "Salesforce did a practice run of this change against the target org and it didn't apply cleanly. A common cause: something your change depends on (a field, object, or flow) isn't included.",
+      fix: "If your change relies on something else you built, use “Pull my changes” again so it's included. Otherwise open the full report for Salesforce's exact messages, or ask a developer for help.",
+    },
+    "Coverage gate": {
+      label: "Test coverage",
+      hint: "Apex test coverage meets this stage's minimum",
+      failed: "There isn't enough automated test coverage for the code in this change to meet this stage's minimum.",
+      fix: "Writing tests is developer territory — ask a developer to add coverage for this change.",
+    },
+  } as Record<string, { label: string; hint: string; failed?: string; fix?: string }>,
+
+  /** The plain-language failure panel under the check chips. */
+  checkHelp: {
+    title: "What needs attention",
+    intro: (n: number) =>
+      n === 1 ? "1 check didn't pass. Here's what it means and what to do:" : `${n} checks didn't pass. Here's what they mean and what to do:`,
+    running: "Some checks are still running — nothing for you to do; this page updates itself.",
+    whatToDo: "What to do",
+    openReport: "Open the full report",
+    askDev: "Ask a developer for help",
+    fallbackFailed: "This check didn't pass.",
+    fallbackFix: "Open the full report for details, or ask a developer for help.",
+    devAsked: "A developer has been asked to help with this change.",
+    retry: "Try the checks again",
+    retrying: "Re-running…",
+    retryHint:
+      "If nothing was obviously wrong, the failure may have been temporary (a slow org or a timeout). Try the checks again before asking a developer.",
   },
 
   pipeline: {
     title: "Release pipeline",
     currentRelease: "Current release",
     noDeploysYet: "Nothing has been released to this stage yet.",
-    openPromotions: "Changes waiting to be promoted",
+    openPromotions: "Incoming changes",
+    incomingFrom: (from: string) => `from ${from}`,
+    devColumn: "Dev sandboxes",
+    devColumnHint: "Where builders work",
+    waitingCount: (n: number) => (n === 0 ? "clear" : `${n} waiting`),
+    gateScan: (sev: number) => `Code scan: serious issues block (severity ≤ ${sev})`,
+    gateCoverage: (pct: number) => `Apex test coverage must be at least ${pct}%`,
+    gateApproval: "A release manager must approve releases to this stage",
     noOpenPromotions: "No changes are waiting.",
     promote: (stage: string) => `Promote to ${stage}`,
     checksPassing: "All checks passing",
@@ -31,12 +136,14 @@ export const copy = {
   },
 
   deployments: {
-    title: "Deployment history",
+    title: "Release history",
     released: "Released",
     backedOut: "Backed out",
     components: (n: number) => `${n} component${n === 1 ? "" : "s"}`,
+    removed: (n: number) => `${n} removed`,
     by: "by",
-    viewDetails: "View details",
+    viewDetails: "Technical details",
+    backOutLink: "Back out a release",
   },
 
   rollback: {
@@ -65,13 +172,47 @@ export const copy = {
     executing: "Backing out…",
     waitingGate: "Waiting for release manager approval…",
     done: (env: string) => `Done — ${env} has been backed out. The timeline below is updated.`,
-    failed: "The back out failed — open the run for details.",
+    failed: "The back out failed — open the progress log for details.",
     managerOnly: "Only release managers can execute a back out.",
-    openRun: "Open the run",
+    openRun: "View progress",
+    workItemsFooter: "Work items in this stage's releases:",
   },
 
-  settings: { title: "Stage gate settings" },
-  audit: { title: "Activity log" },
+  settings: { title: "Pipeline settings" },
+
+  topology: {
+    title: "Pipeline stages",
+    intro:
+      "The path every change travels, left to right. Changes here open a review (a config change request) — nothing moves until it's approved.",
+    addButton: "Add a stage",
+    addTitle: "Add a stage",
+    nameLabel: "Stage name",
+    nameHint: "Lowercase, e.g. sit — shown on the board as SIT",
+    branchLabel: "Branch name",
+    branchHint: "Usually the same as the stage name",
+    orgLabel: "Org key",
+    orgHint: "Uppercase key for this stage's Salesforce org, e.g. SIT — its auth secrets use this prefix",
+    positionLabel: "Where in the path?",
+    positionFirst: "First stage (changes land here from dev sandboxes)",
+    positionAfter: (env: string) => `After ${env}`,
+    authLabel: "How CI signs in to the org",
+    authSfdxUrl: "Stored login URL (sandboxes / scratch orgs)",
+    authJwt: "Certificate (production / long-lived orgs)",
+    testLabel: "Apex tests during deploys",
+    testConditional: "Only when the change contains code",
+    testLocal: "Always run local tests",
+    testNone: "Never (not recommended past the first stage)",
+    approvalLabel: "Require release-manager approval before releases",
+    submit: "Request this stage",
+    removeButton: "Remove",
+    removeConfirm: (env: string) =>
+      `Remove ${env} from the pipeline? The org, its history, and its releases are kept — only the stage mapping is removed. This opens a change request for review.`,
+    confirmRemove: "Yes, request removal",
+    cancel: "Cancel",
+    manualStepsTitle: "To finish setting up (also listed on the change request):",
+    viewRequest: "View change request",
+  },
+  audit: { title: "Audit & reporting" },
 
   startChange: {
     button: "Start a change",
@@ -81,14 +222,22 @@ export const copy = {
     workItemHint: "From Jira (PROJ-123) or Azure DevOps (AB#456)",
     descriptionLabel: "What are you changing?",
     descriptionHint: "A short sentence — this becomes the change's title",
-    stageLabel: "Where will you build it?",
+    stageLabel: "Which stage does it release to first?",
+    stageHint: "Almost always the first stage — leave as is unless your release manager says otherwise.",
+    advanced: "Advanced",
     submit: "Create my change",
+    afterSubmit: "Next: build in your sandbox, then pull your changes in.",
   },
 
   releasing: {
     inProgress: "Releasing…",
     waitingApproval: "Waiting for release manager approval",
     for: "for",
+  },
+
+  promoteStatus: {
+    promoting: "Promoting… this can take a moment.",
+    dismiss: "Dismiss",
   },
 
   attention: {
@@ -98,10 +247,18 @@ export const copy = {
 
   approvals: {
     waiting: (age: string) => `release waiting for approval (${age})`,
+    /** Strip Git plumbing from a run's display title ("Merge pull request #6 — X" → "Release to ENV — X"). */
+    releaseTitle: (env: string, rawTitle: string) => {
+      // "Merge pull request #6 from owner/branch" carries no human title — drop it entirely.
+      if (/^Merge pull request #\d+ from \S+$/i.test(rawTitle)) return `Release to ${env}`;
+      const cleaned = rawTitle.replace(/^Merge pull request #\d+\s*(?:—|-|:)?\s*/i, "").trim();
+      return `Release to ${env} — ${cleaned || rawTitle}`;
+    },
     whatWillDeploy: (n: number) => `What will deploy (${n} component${n === 1 ? "" : "s"})`,
     approve: "Approve & release",
     reject: "Reject",
     commentHint: "Optional note (audit log)",
+    viewProgress: "View progress",
     managerOnly: "A release manager can approve this from here.",
     appNotReviewer:
       "To approve from here, the app needs its Deployments permission set to 'Read and write' (one-time GitHub setting).",
@@ -116,10 +273,19 @@ export const copy = {
     visualComparison: "Visual comparison",
     pulling: "Pulling your changes from the org — usually a minute or two…",
     pullDone: "Done — your changes are in the list below.",
+    pullReview:
+      "Now tick only what belongs to this work item — shared orgs often contain other people's edits too.",
     pullNothing: "Finished, but nothing new was found in the org.",
-    pullFailed: "The pull didn't finish — open the run to see why.",
-    openRun: "Open the run",
-    removeSelected: (n: number) => (n ? `Remove ${n} selected from this change` : "Remove selected"),
+    pullFailed: "The pull didn't finish — open the progress log to see why.",
+    openRun: "View progress",
+    keepHint: "Ticked = part of this change. Untick anything that isn't yours.",
+    removeUnticked: (n: number) =>
+      n === 0
+        ? "Remove unticked items"
+        : n === 1
+          ? "Remove the 1 unticked item from this change"
+          : `Remove the ${n} unticked items from this change`,
+    allKept: "Everything is ticked — untick anything that isn't part of this change.",
     askForHelp: "Ask a developer for help",
     inProgress: "Being built",
     beingBuilt: "Changes being built",

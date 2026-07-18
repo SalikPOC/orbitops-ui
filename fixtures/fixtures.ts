@@ -94,7 +94,7 @@ export const fixtureHistory: DeployManifest[] = [
     destructive: {},
     componentCount: 3,
     destructiveCount: 0,
-    runUrl: "https://github.com/SalikPOC/sf-pipeline/actions/runs/1",
+    runUrl: "https://github.com/SalikPOC/sf-pipeline/actions",
     actor: "SalikPOC",
     timestamp: "2026-07-14T16:05:00Z",
     mode: "full",
@@ -112,7 +112,7 @@ export const fixtureHistory: DeployManifest[] = [
     destructive: {},
     componentCount: 3,
     destructiveCount: 0,
-    runUrl: "https://github.com/SalikPOC/sf-pipeline/actions/runs/2",
+    runUrl: "https://github.com/SalikPOC/sf-pipeline/actions",
     actor: "SalikPOC",
     timestamp: "2026-07-14T16:20:00Z",
     mode: "full",
@@ -151,7 +151,9 @@ export const fixturePromotions: Promotion[] = [
       { name: "Resolve stage", status: "success" },
       { name: "What will deploy", status: "success" },
       { name: "Work items", status: "success" },
-      { name: "Code scan", status: "failure" },
+      // Real repo's Actions list — fixture run ids would 404 (mock-only concern;
+      // real mode uses the check run's own html_url from the Checks API).
+      { name: "Code scan", status: "failure", url: "https://github.com/SalikPOC/sf-pipeline/actions" },
       { name: "Validate against target org", status: "pending" },
       { name: "Coverage gate", status: "pending" },
     ],

@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { copy } from "@/lib/copy";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, fmtStage } from "@/lib/format";
 import { getDeployHistory, getPipeline } from "@/lib/data";
+import { getTrackerInfo } from "@/lib/tracker";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { WorkItemBadge } from "@/components/chips";
 
@@ -9,6 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function DeploymentsPage() {
   const stages = await getPipeline();
   const histories = await Promise.all(stages.map((s) => getDeployHistory(s.environment)));
+  const tracker = await getTrackerInfo(histories.flat().flatMap((m) => m.workItems));
 
   return (
     <div>
@@ -17,7 +20,17 @@ export default async function DeploymentsPage() {
       <div className="space-y-8">
         {stages.map((stage, i) => (
           <section key={stage.environment}>
-            <h2 className="mb-3 text-base font-semibold capitalize">{stage.environment}</h2>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="text-base font-semibold">{fmtStage(stage.environment)}</h2>
+              {histories[i].length > 0 && (
+                <Link
+                  href={`/rollback?env=${stage.environment}`}
+                  className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                >
+                  {copy.deployments.backOutLink} →
+                </Link>
+              )}
+            </div>
             {histories[i].length === 0 ? (
               <p className="text-sm text-zinc-500">{copy.pipeline.noDeploysYet}</p>
             ) : (
@@ -52,19 +65,23 @@ export default async function DeploymentsPage() {
                         <td className="px-4 py-2">
                           <div className="flex flex-wrap gap-1">
                             {m.workItems.length ? (
-                              m.workItems.map((w) => <WorkItemBadge key={w} id={w} />)
+                              m.workItems.map((w) => (
+                                <WorkItemBadge key={w} id={w} href={tracker[w]?.url} status={tracker[w]?.status} />
+                              ))
                             ) : (
                               <span className="text-xs text-zinc-400">—</span>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-2 text-xs text-zinc-500">
-                          {copy.deployments.components(m.componentCount)}
+                          {m.componentCount > 0 && copy.deployments.components(m.componentCount)}
+                          {m.componentCount > 0 && m.destructiveCount > 0 && " · "}
                           {m.destructiveCount > 0 && (
-                            <span className="ml-1 text-red-600 dark:text-red-400">
-                              · {m.destructiveCount} removed
+                            <span className="text-red-600 dark:text-red-400">
+                              {copy.deployments.removed(m.destructiveCount)}
                             </span>
                           )}
+                          {m.componentCount === 0 && m.destructiveCount === 0 && "—"}
                         </td>
                         <td className="px-4 py-2 text-xs text-zinc-500">
                           {fmtDateTime(m.timestamp)}
@@ -78,7 +95,7 @@ export default async function DeploymentsPage() {
                             rel="noreferrer"
                             className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
                           >
-                            {copy.deployments.viewDetails}
+                            {copy.deployments.viewDetails} ↗
                           </a>
                         </td>
                       </tr>

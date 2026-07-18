@@ -1,12 +1,29 @@
 # OrbitOps UI
 
 Citizen-developer release console for the [sf-pipeline](https://github.com/SalikPOC/sf-pipeline)
-Salesforce CI/CD PoC — a DevOps-Center-like experience with no Git jargon anywhere.
+Salesforce CI/CD PoC — a Copado/Gearset-familiar, DevOps-Center-like experience
+with no Git jargon anywhere. Pro-code developers don't need this app at all —
+they use plain Git/GitHub (see sf-pipeline's docs/DEVELOPER_GUIDE.md); both
+personas share one pipeline.
+
+> AI assistants / coding agents: start at [AGENTS.md](AGENTS.md); the dated
+> decision log is [CLAUDE.md](CLAUDE.md).
 
 ## What it does
 
-- **Pipeline board** — stages with current release, changes being built, changes
-  waiting to promote, live "Releasing…" / "Waiting for approval" indicators.
+- **My changes** — work-item-centric kanban (Being built → Checks & fixes →
+  Ready to promote → Released) with per-stage release badges (✓ INT ✓ UAT ○ PROD),
+  live Jira/ADO ticket status, and one next-action button per card. Builders'
+  home page.
+- **Pipeline board** — left-to-right flow (Dev sandboxes → stages → Production)
+  with arrow connectors and waiting counts, per-stage gate chips, current
+  release, incoming changes, live "Releasing…" / "Waiting for approval"
+  indicators, and a "Needs attention" triage strip.
+- **Journey stepper** — every change/promotion page pins the 5-step path
+  (Build in your sandbox → Pull changes → Review & submit → Checks → Promote)
+  so nobody guesses what a screen is for.
+- **Start a change** — work-item-tagged workspace created from a form (Jira
+  `PROJ-123` / Azure DevOps `AB#456` IDs, case-insensitive).
 - **Start a change** — work-item-tagged workspace created from a form (Jira
   `PROJ-123` / Azure DevOps `AB#456` IDs, case-insensitive).
 - **Pull my changes** — retrieves the builder's org edits into their change via
@@ -18,9 +35,12 @@ Salesforce CI/CD PoC — a DevOps-Center-like experience with no Git jargon anyw
   green/amber/red diff halos, an element sidebar, zoom/fit controls, and a
   fullscreen Expand mode. Auto-layout flows (which store no canvas coordinates)
   get a computed layered layout.
-- **Promote** — checks summary, deploy preview (what will change), plain-language
-  file list with per-component curation (Remove selected), promote button with
-  role + status guards.
+- **Promote** — friendly check labels with a "What needs attention" panel on
+  failure (plain-language cause + what to do, "Try the checks again" re-run,
+  open the report, ask a developer for help), deploy preview, keep-semantics
+  component review (ticked = mine; remove the unticked), promote button with
+  role + status guards, and result banners at the top of the page as well as by
+  the button.
 - **Back out a release** — per-environment timeline from deploy manifests;
   preview dispatches `rollback.yml` and renders the safety report (restore/remove
   lists, data-loss warnings, validation verdict); execute is release-manager-only
@@ -28,9 +48,11 @@ Salesforce CI/CD PoC — a DevOps-Center-like experience with no Git jargon anyw
 - **Connect an org** — OAuth + PKCE against Salesforce's own login page; the
   refresh token is sealed server-side into a repo Actions secret and the org
   joins the pull picker. The UI never sees passwords.
-- **Settings** — stage gates editable by release managers; changes open a
-  reviewed config PR against `pipeline.yml` (never a direct push).
-- **Activity log** — DORA-lite tiles (releases, back-outs, weekly activity,
+- **Settings** — stage gates AND pipeline topology (add/remove stages) editable
+  by release managers; changes open a reviewed config PR against `pipeline.yml`
+  (never a direct push), with branch/GitHub-Environment automation and a
+  finish-the-setup checklist.
+- **Audit & reporting** — DORA-lite tiles (releases, back-outs, weekly activity,
   back-out rate), stage/type filters, CSV export.
 
 ## Run it (mock mode — zero setup)
@@ -80,3 +102,16 @@ src/components/FlowDiffViewer.tsx   the Flow-Builder-style diff canvas
 src/lib/salesforce-oauth.ts / github-admin.ts   Connect-an-org (PKCE, sealed secrets)
 src/lib/copy.ts          every citizen-facing string
 ```
+
+## Roadmap (post-PoC)
+
+Concepts Copado/Gearset users will expect that are intentionally out of PoC scope:
+
+- **Back-promotion** — syncing a hotfix released to Production back down to
+  UAT/Integration so lower stages don't drift behind.
+- **Environment drift / refresh indicators** — surfacing "this sandbox is out
+  of sync with its stage branch" on the pipeline board.
+- **Live tracker write-back** — the deploy pipeline already stubs
+  `postDeploymentStatus`; wiring Jira/ADO credentials turns deploy events into
+  ticket comments/links. (Read-side status + deep links are already in the UI
+  via `JIRA_BASE_URL`/`JIRA_EMAIL`/`JIRA_API_TOKEN` and `ADO_ORG_URL`/`ADO_PAT`.)

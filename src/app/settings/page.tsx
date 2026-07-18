@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { copy } from "@/lib/copy";
+import { fmtStage } from "@/lib/format";
 import { getConnectedOrgEntries, getPipeline, getSourceOrgs } from "@/lib/data";
 import { getSessionUser } from "@/auth";
 import { GateEditor } from "@/components/GateEditor";
 import { ConnectedOrgsList } from "@/components/ConnectedOrgsList";
+import { TopologyEditor } from "@/components/TopologyEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +53,10 @@ export default async function SettingsPage({
           </ul>
         )}
       </section>
+      <TopologyEditor
+        stages={stages.map((s) => ({ branch: s.branch, environment: s.environment, org: s.org }))}
+        canEdit={canEdit}
+      />
       <div className="max-w-2xl overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
         <table className="w-full bg-white text-sm dark:bg-zinc-900">
           <thead className="bg-zinc-100 text-left text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800/60">
@@ -63,7 +69,7 @@ export default async function SettingsPage({
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {stages.map((s) => (
               <tr key={s.environment}>
-                <td className="px-4 py-2 font-medium capitalize">{s.environment}</td>
+                <td className="px-4 py-2 font-medium">{fmtStage(s.environment)}</td>
                 <td className="px-4 py-2" colSpan={2}>
                   <GateEditor
                     stageBranch={s.branch}

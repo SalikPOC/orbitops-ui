@@ -39,10 +39,12 @@ export async function promote(prNumber: number): Promise<ActionResult> {
     if (promotion.mergeable === false)
       return { ok: false, message: "This change conflicts with another change. A developer needs to resolve it first." };
 
-    // Promotions beyond integration are release-manager territory (the GitHub
-    // environment gate would still catch the deploy, but fail early and clearly).
-    if (promotion.baseBranch !== "integration" && rank[user.role] < rank["release-manager"]) {
-      return { ok: false, message: "Promotions past Integration need a release manager." };
+    // Promotions beyond the first stage are release-manager territory (the
+    // GitHub environment gate would still catch the deploy, but fail early and
+    // clearly). First stage = first entry in pipeline.yml, never hardcoded.
+    const stages = await getPipeline();
+    if (promotion.baseBranch !== stages[0]?.branch && rank[user.role] < rank["release-manager"]) {
+      return { ok: false, message: "Promotions past the first stage need a release manager." };
     }
 
     if (MOCK) return { ok: true, message: "Promoted! (demo mode — nothing really happened)" };
@@ -129,6 +131,227 @@ export async function updateGates(
       body: `Requested from OrbitOps settings.\n\n- Minimum coverage: **${minCoverage}%**\n- Scan blocks at severity ≤ **${scannerMaxSeverity}**\n\nWork-Items: POC-0`,
     });
     return { ok: true, message: "Change requested — it takes effect once the review is approved.", prUrl: pr.data.html_url };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export interface TopologyResult extends ActionResult {
+  prUrl?: string;
+  /** Setup steps the app couldn't do itself (secrets, reviewers) — shown as a checklist. */
+  manualSteps?: string[];
+}
+
+/** Shared plumbing for topology changes: commit the regenerated pipeline.yml
+ *  on a fresh branch and open a config PR (CODEOWNERS review = the safety net). */
+async function openTopologyPr(
+  title: string,
+  body: string,
+  newYaml: string,
+  fileSha: string,
+  slug: string
+): Promise<{ prUrl: string }> {
+  const gh = await getOctokit();
+  const path = ".orbitops/pipeline.yml";
+  const mainRef = await gh.rest.git.getRef({ owner: REPO_OWNER, repo: REPO_NAME, ref: "heads/main" });
+  const branch = `orbitops/topology-${slug}-${Date.now().toString(36)}`;
+  await gh.rest.git.createRef({
+    owner: REPO_OWNER, repo: REPO_NAME, ref: `refs/heads/${branch}`, sha: mainRef.data.object.sha,
+  });
+  await gh.rest.repos.createOrUpdateFileContents({
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    path,
+    branch,
+    message: `${title}\n\nWork-Items: POC-0`,
+    content: Buffer.from(newYaml).toString("base64"),
+    sha: fileSha,
+  });
+  const pr = await gh.rest.pulls.create({
+    owner: REPO_OWNER, repo: REPO_NAME, title: `${title} (POC-0)`, head: branch, base: "main", body,
+  });
+  return { prUrl: pr.data.html_url };
+}
+
+async function loadPipelineConfigFromRepo(): Promise<{
+  cfg: import("./pipeline-config").PipelineConfig;
+  fileSha: string;
+}> {
+  const gh = await getOctokit();
+  const { parsePipelineConfig } = await import("./pipeline-config");
+  const file = await gh.rest.repos.getContent({
+    owner: REPO_OWNER, repo: REPO_NAME, path: ".orbitops/pipeline.yml", ref: "main",
+  });
+  const raw = Buffer.from((file.data as { content: string }).content, "base64").toString("utf8");
+  return { cfg: parsePipelineConfig(raw), fileSha: (file.data as { sha: string }).sha };
+}
+
+export interface NewStageInput {
+  environment: string;
+  branch: string;
+  org: string;
+  authMethod: "jwt" | "sfdx-url";
+  testLevel: "NoTestRun" | "RunLocalTests" | "Conditional";
+  /** Branch of the stage this one goes AFTER; "" inserts it first. */
+  afterBranch: string;
+  minCoverage: number;
+  scannerMaxSeverity: number;
+  requiredReviewers: boolean;
+}
+
+/**
+ * Add a pipeline stage from the UI (E-topology). Opens a config PR editing
+ * pipeline.yml; best-effort automates the git branch + GitHub Environment and
+ * reports anything that still needs an admin as a checklist.
+ */
+export async function addStage(input: NewStageInput): Promise<TopologyResult> {
+  try {
+    await requireRole("release-manager");
+    const environment = input.environment.trim().toLowerCase();
+    const branch = input.branch.trim().toLowerCase() || environment;
+    const org = input.org.trim().toUpperCase();
+
+    const stage = {
+      branch,
+      org,
+      environment,
+      authMethod: input.authMethod,
+      testLevel: input.testLevel,
+      gates: {
+        scannerMaxSeverity: input.scannerMaxSeverity,
+        minCoverage: input.minCoverage,
+        ...(input.requiredReviewers ? { requiredReviewers: true } : {}),
+      },
+    } satisfies import("./types").Stage;
+
+    const manualSteps = [
+      `Add auth secrets for org key ${org}: repo secret ${org}_SF_AUTH_URL (sfdx-url) or the ${org}_SF_CLIENT_ID/_SF_USERNAME/_SF_JWT_KEY/_SF_INSTANCE_URL set (jwt).`,
+      ...(input.requiredReviewers
+        ? [`GitHub → Settings → Environments → ${environment}: add the release managers as required reviewers.`]
+        : []),
+      `GitHub → Settings → Branches: protect ${branch} (require PRs + green checks, like the other stage branches).`,
+    ];
+
+    if (MOCK) {
+      return {
+        ok: true,
+        message: `Change requested — ${environment} will join the pipeline once the review is approved. (demo mode)`,
+        prUrl: "https://github.com",
+        manualSteps,
+      };
+    }
+
+    const { cfg, fileSha } = await loadPipelineConfigFromRepo();
+    const { serializePipelineConfig, validateNewStage } = await import("./pipeline-config");
+    const error = validateNewStage(cfg, stage);
+    if (error) return { ok: false, message: error };
+
+    const idx = input.afterBranch === "" ? 0 : cfg.pipeline.findIndex((s) => s.branch === input.afterBranch) + 1;
+    if (input.afterBranch !== "" && idx === 0) return { ok: false, message: "Unknown position." };
+    const pipeline = [...cfg.pipeline.slice(0, idx), stage, ...cfg.pipeline.slice(idx)];
+
+    // The new stage branch starts from its downstream neighbour (the stage to
+    // its right) so it reflects what is already released beyond it; a new
+    // last stage starts from the previous last.
+    const neighbour = pipeline[idx + 1]?.branch ?? cfg.pipeline[cfg.pipeline.length - 1].branch;
+    const gh = await getOctokit();
+    let branchCreated = false;
+    try {
+      const src = await gh.rest.git.getRef({ owner: REPO_OWNER, repo: REPO_NAME, ref: `heads/${neighbour}` });
+      await gh.rest.git.createRef({
+        owner: REPO_OWNER, repo: REPO_NAME, ref: `refs/heads/${branch}`, sha: src.data.object.sha,
+      });
+      branchCreated = true;
+    } catch (err: unknown) {
+      if ((err as { status?: number }).status === 422) branchCreated = true; // already exists
+    }
+    if (!branchCreated) manualSteps.unshift(`Create Git branch ${branch} from ${neighbour}.`);
+
+    let envCreated = false;
+    try {
+      await gh.request("PUT /repos/{owner}/{repo}/environments/{environment_name}", {
+        owner: REPO_OWNER, repo: REPO_NAME, environment_name: environment,
+      });
+      envCreated = true;
+    } catch {
+      manualSteps.unshift(`GitHub → Settings → Environments: create an environment named ${environment}.`);
+    }
+
+    const body = [
+      `Requested from OrbitOps settings: add stage **${environment}** (branch \`${branch}\`, org \`${org}\`) ${input.afterBranch ? `after \`${input.afterBranch}\`` : "as the first stage"}.`,
+      "",
+      `Automated: ${branchCreated ? `branch \`${branch}\` created from \`${neighbour}\`` : "branch creation failed"}; ${envCreated ? `environment \`${environment}\` created` : "environment creation needs an admin"}.`,
+      "",
+      "**Before merging, complete:**",
+      ...manualSteps.map((s) => `- [ ] ${s}`),
+      "",
+      "Work-Items: POC-0",
+    ].join("\n");
+
+    const { prUrl } = await openTopologyPr(
+      `Add pipeline stage ${environment}`,
+      body,
+      serializePipelineConfig({ ...cfg, pipeline }),
+      fileSha,
+      `add-${environment}`
+    );
+    return {
+      ok: true,
+      message: "Change requested — the new stage takes effect once the review is approved and merged.",
+      prUrl,
+      manualSteps,
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+/** Remove a pipeline stage from the UI. The org, its Git branch, its GitHub
+ *  Environment, and all deploy history are kept — only the pipeline mapping goes. */
+export async function removeStage(stageBranch: string): Promise<TopologyResult> {
+  try {
+    await requireRole("release-manager");
+    if (MOCK) {
+      return {
+        ok: true,
+        message: "Change requested — the stage leaves the pipeline once the review is approved. (demo mode)",
+        prUrl: "https://github.com",
+      };
+    }
+    const { cfg, fileSha } = await loadPipelineConfigFromRepo();
+    const { serializePipelineConfig } = await import("./pipeline-config");
+    const stage = cfg.pipeline.find((s) => s.branch === stageBranch);
+    if (!stage) return { ok: false, message: "That stage no longer exists." };
+    if (cfg.pipeline.length === 1) return { ok: false, message: "The pipeline needs at least one stage." };
+
+    const pipeline = cfg.pipeline.filter((s) => s.branch !== stageBranch);
+    const isLast = cfg.pipeline[cfg.pipeline.length - 1].branch === stageBranch;
+    const body = [
+      `Requested from OrbitOps settings: remove stage **${stage.environment}** (branch \`${stage.branch}\`, org \`${stage.org}\`) from the pipeline.`,
+      "",
+      isLast
+        ? `⚠️ This was the **last** stage — after merging, \`${pipeline[pipeline.length - 1].environment}\` becomes the production target and back-promotions re-derive automatically.`
+        : `Promotions will flow ${pipeline.map((s) => s.environment).join(" → ")} after merging.`,
+      "",
+      "**Kept (not deleted):** the Salesforce org, its auth secrets, Git branch, GitHub Environment, and all release history.",
+      `- [ ] Optional cleanup once merged: archive branch protection / environment for \`${stage.environment}\`.`,
+      ...(isLast ? [] : [`- [ ] Check no promotion PR is currently targeting \`${stage.branch}\` (it would be orphaned).`]),
+      "",
+      "Work-Items: POC-0",
+    ].join("\n");
+
+    const { prUrl } = await openTopologyPr(
+      `Remove pipeline stage ${stage.environment}`,
+      body,
+      serializePipelineConfig({ ...cfg, pipeline }),
+      fileSha,
+      `remove-${stage.environment}`
+    );
+    return {
+      ok: true,
+      message: "Change requested — the stage leaves the pipeline once the review is approved and merged.",
+      prUrl,
+    };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
   }
@@ -427,19 +650,74 @@ export async function discardComponents(
   }
 }
 
-/** Conflict handoff: flag the promotion for a developer (E6.4). */
-export async function requestDeveloperHelp(prNumber: number): Promise<ActionResult> {
+/** Developer handoff: flag the promotion for a developer (E6.4) — conflicts,
+ *  failing checks, anything a citizen dev can't resolve themselves. */
+export async function requestDeveloperHelp(prNumber: number, reason?: string): Promise<ActionResult> {
   try {
     const user = await requireRole("citizen");
+    const why = reason?.trim() || "this change overlaps with another change and needs the conflict resolved";
     if (MOCK) return { ok: true, message: "A developer has been asked to help. (demo mode)" };
     const gh = await getOctokit();
     await gh.rest.issues.createComment({
       owner: REPO_OWNER,
       repo: REPO_NAME,
       issue_number: prNumber,
-      body: `🙋 **@${user.login} asked for developer help via OrbitOps** — this change overlaps with another change and needs the conflict resolved.`,
+      body: `🙋 **@${user.login} asked for developer help via OrbitOps** — ${why}.`,
     });
     return { ok: true, message: "A developer has been asked to help with this change." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+/**
+ * Re-run the failed CI checks on a promotion — for transient failures (org
+ * timeouts, row locks, flaky infra) a citizen dev can retry without touching
+ * GitHub. Re-runs only the failed jobs of the pr-validate run(s) on the
+ * promotion's current commit; successful jobs keep their results.
+ */
+export async function rerunPromotionChecks(prNumber: number): Promise<ActionResult> {
+  try {
+    await requireRole("citizen");
+    if (MOCK) return { ok: true, message: "Re-running the checks — this page updates as they finish. (demo mode)" };
+
+    const gh = await getOctokit();
+    const pr = await gh.rest.pulls.get({ owner: REPO_OWNER, repo: REPO_NAME, pull_number: prNumber });
+    if (pr.data.merged) return { ok: false, message: "This change has already been promoted." };
+    const headSha = pr.data.head.sha;
+
+    const runs = await gh.rest.actions.listWorkflowRunsForRepo({
+      owner: REPO_OWNER, repo: REPO_NAME, head_sha: headSha, per_page: 30,
+    });
+    // Newest run per workflow on this commit; retry the ones that didn't succeed.
+    const latestByWorkflow = new Map<number, (typeof runs.data.workflow_runs)[number]>();
+    for (const run of runs.data.workflow_runs) {
+      if (!latestByWorkflow.has(run.workflow_id)) latestByWorkflow.set(run.workflow_id, run);
+    }
+    const retryable = ["failure", "cancelled", "timed_out", "startup_failure"];
+    const toRerun = [...latestByWorkflow.values()].filter((r) => retryable.includes(r.conclusion ?? ""));
+    if (!toRerun.length) {
+      return { ok: false, message: "There are no failed checks to re-run right now — they may still be finishing." };
+    }
+
+    let ok = 0;
+    for (const run of toRerun) {
+      try {
+        await gh.rest.actions.reRunWorkflowFailedJobs({ owner: REPO_OWNER, repo: REPO_NAME, run_id: run.id });
+        ok++;
+      } catch {
+        // Some runs can't rerun-failed-jobs (e.g. fully cancelled) — retry the whole run.
+        try {
+          await gh.rest.actions.reRunWorkflow({ owner: REPO_OWNER, repo: REPO_NAME, run_id: run.id });
+          ok++;
+        } catch {
+          /* leave it; report partial success below */
+        }
+      }
+    }
+    if (!ok) return { ok: false, message: "GitHub declined to re-run the checks — open the full report and retry from there." };
+    revalidatePath(`/promotions/${prNumber}`);
+    return { ok: true, message: "Re-running the checks — this page updates as they finish." };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Something went wrong." };
   }

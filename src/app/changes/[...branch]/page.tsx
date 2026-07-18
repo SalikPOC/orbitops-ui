@@ -5,7 +5,9 @@ import { summarizeMetadataPath } from "@/lib/metadata-summary";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { WorkItemBadge } from "@/components/chips";
 import { ChangesPanel } from "@/components/ChangesPanel";
+import { JourneySteps } from "@/components/JourneySteps";
 import { SubmitForPromotion } from "@/components/SubmitForPromotion";
+import { getTrackerInfo } from "@/lib/tracker";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,10 @@ export default async function ChangePage({ params }: { params: Promise<{ branch:
   const flowDiffs = await getFlowDiffs(baseBranch, headBranch, files);
 
   const workItems = [...new Set(headBranch.match(/[A-Z][A-Z0-9]+-\d+|AB#\d+/g) ?? [])];
-  const releases = await getWorkItemReleases(stages, workItems);
+  const [releases, tracker] = await Promise.all([
+    getWorkItemReleases(stages, workItems),
+    getTrackerInfo(workItems),
+  ]);
   const slug = headBranch
     .replace(/^feature\//, "")
     .replace(/^([A-Z][A-Z0-9]+-\d+|AB#\d+)-?/, "")
@@ -33,13 +38,18 @@ export default async function ChangePage({ params }: { params: Promise<{ branch:
       <AutoRefresh seconds={20} />
       <div className="mb-1 flex items-center gap-2">
         {workItems.map((w) => (
-          <WorkItemBadge key={w} id={w} />
+          <WorkItemBadge key={w} id={w} href={tracker[w]?.url} status={tracker[w]?.status} />
         ))}
         <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-500 dark:bg-zinc-800">
           {copy.changes.inProgress}
         </span>
       </div>
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">{title}</h1>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1>
+
+      <JourneySteps
+        current={files.length === 0 ? 2 : 3}
+        note={files.length === 0 ? copy.changes.empty : copy.submit.ready}
+      />
 
       {releases.length > 0 && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200">

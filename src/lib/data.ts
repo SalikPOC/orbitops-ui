@@ -493,6 +493,8 @@ export async function getActiveDeployRun(branch: string): Promise<ActiveRun | nu
  * One chip per check name. listForRef can return same-named runs from
  * different workflows/attempts on the same SHA; keep the newest (the API
  * returns most-recently-started first) — duplicates broke React keys.
+ * Reusable-workflow jobs are reported as "caller / job" ("checks / Code scan");
+ * keep only the last segment so copy.checkLabels and gating match either shape.
  */
 function toCheckChips(
   runs: { name: string; conclusion: string | null; status: string; html_url: string | null }[]
@@ -500,9 +502,10 @@ function toCheckChips(
   const seen = new Set<string>();
   const chips: Promotion["checks"] = [];
   for (const c of runs) {
-    if (seen.has(c.name)) continue;
-    seen.add(c.name);
-    chips.push({ name: c.name, status: chipStatus(c.conclusion, c.status), url: c.html_url ?? undefined });
+    const name = c.name.includes(" / ") ? c.name.split(" / ").pop()! : c.name;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    chips.push({ name, status: chipStatus(c.conclusion, c.status), url: c.html_url ?? undefined });
   }
   return chips;
 }

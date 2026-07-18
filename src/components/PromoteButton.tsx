@@ -1,7 +1,8 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { promote, type ActionResult } from "@/lib/actions";
+import { promote } from "@/lib/actions";
+import { usePromotionStatus } from "./PromotionStatus";
 
 export function PromoteButton({ prNumber, label, disabled, disabledReason }: {
   prNumber: number;
@@ -10,8 +11,9 @@ export function PromoteButton({ prNumber, label, disabled, disabledReason }: {
   disabledReason?: string;
 }) {
   const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult | null>(null);
+  const { status, setStatus } = usePromotionStatus();
   const router = useRouter();
+  const result = status.phase === "done" ? status.result : null;
 
   return (
     <div>
@@ -19,8 +21,9 @@ export function PromoteButton({ prNumber, label, disabled, disabledReason }: {
         disabled={disabled || pending}
         onClick={() =>
           startTransition(async () => {
+            setStatus({ phase: "pending" });
             const r = await promote(prNumber);
-            setResult(r);
+            setStatus({ phase: "done", result: r });
             if (r.ok) setTimeout(() => router.push("/pipeline"), 1500);
           })
         }
