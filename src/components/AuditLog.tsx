@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, fmtStage } from "@/lib/format";
 import { copy } from "@/lib/copy";
 import type { DeployManifest } from "@/lib/types";
 
@@ -43,7 +43,7 @@ export function AuditLog({ events }: { events: DeployManifest[] }) {
         <select value={env} onChange={(e) => setEnv(e.target.value)} className={selectCls} aria-label="Filter by stage">
           <option value="all">All stages</option>
           {envs.map((e) => (
-            <option key={e} value={e} className="capitalize">{e}</option>
+            <option key={e} value={e}>{fmtStage(e)}</option>
           ))}
         </select>
         <select value={type} onChange={(e) => setType(e.target.value)} className={selectCls} aria-label="Filter by activity">
@@ -66,8 +66,8 @@ export function AuditLog({ events }: { events: DeployManifest[] }) {
           >
             <span className="font-medium">{m.actor}</span>{" "}
             {m.type === "rollback"
-              ? `backed out ${m.env} to release #${m.rolledBackTo}`
-              : `released #${m.seq} to ${m.env}`}
+              ? `backed out ${fmtStage(m.env)} to release #${m.rolledBackTo}`
+              : `released #${m.seq} to ${fmtStage(m.env)}`}
             <span className="ml-2 text-xs text-zinc-400">{fmtDateTime(m.timestamp)}</span>
             {m.reason && <div className="mt-1 text-xs text-zinc-500">Reason: {m.reason}</div>}
             <a

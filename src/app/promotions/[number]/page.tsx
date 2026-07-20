@@ -5,9 +5,14 @@ import { copy } from "@/lib/copy";
 import { getFlowDiffs, getPipeline, getPromotion, getPromotionFiles, getSourceOrgs, getStickyComment } from "@/lib/data";
 import { summarizeMetadataPath } from "@/lib/metadata-summary";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { CheckHelp } from "@/components/CheckHelp";
 import { Chip, WorkItemBadge } from "@/components/chips";
+import { JourneySteps } from "@/components/JourneySteps";
 import { PromoteButton } from "@/components/PromoteButton";
+import { PromotionStatusProvider, PromotionTopBanner } from "@/components/PromotionStatus";
 import { ChangesPanel } from "@/components/ChangesPanel";
+import { fmtStage } from "@/lib/format";
+import { getTrackerInfo } from "@/lib/tracker";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +23,11 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
   if (!promotion) notFound();
 
   const stage = stages.find((s) => s.branch === promotion.baseBranch);
-  const [preview, files, sourceOrgs] = await Promise.all([
+  const [preview, files, sourceOrgs, tracker] = await Promise.all([
     getStickyComment(prNumber, "orbitops:deploy-preview"),
     getPromotionFiles(promotion.baseBranch, promotion.headBranch),
     getSourceOrgs(),
+    getTrackerInfo(promotion.workItems),
   ]);
   const flowDiffsP = getFlowDiffs(promotion.baseBranch, promotion.headBranch, files);
   const failing = promotion.checks.some((c) => c.status === "failure");
@@ -29,23 +35,42 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
   const blocked = failing || running || promotion.mergeable === false;
 
   return (
+    <PromotionStatusProvider>
     <div className="max-w-5xl">
       <AutoRefresh seconds={20} />
       <div className="mb-1 flex items-center gap-2">
         {promotion.workItems.map((w) => (
-          <WorkItemBadge key={w} id={w} />
+          <WorkItemBadge key={w} id={w} href={tracker[w]?.url} status={tracker[w]?.status} />
         ))}
         <span className="text-xs text-zinc-400">#{promotion.number}</span>
       </div>
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">{promotion.title}</h1>
-      <p className="mb-6 text-sm text-zinc-500">
-        by {promotion.author} → <span className="capitalize">{stage?.environment ?? promotion.baseBranch}</span>
+      <p className="mb-4 text-sm text-zinc-500">
+        by {promotion.author} → {fmtStage(stage?.environment ?? promotion.baseBranch)}
       </p>
+
+      <JourneySteps
+        current={promotion.merged ? 5 : failing || running || promotion.mergeable === false ? 4 : 5}
+        done={promotion.merged}
+        note={
+          promotion.merged
+            ? undefined
+            : failing
+              ? copy.pipeline.checksFailing
+              : running
+                ? copy.pipeline.checksRunning
+                : promotion.mergeable === false
+                  ? copy.pipeline.conflict
+                  : copy.pipeline.checksPassing
+        }
+      />
+
+      <PromotionTopBanner />
 
       {promotion.merged && (
         <div className="mb-6 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-          {copy.pipeline.promoted(stage?.environment ?? promotion.baseBranch)}
+          {copy.pipeline.promoted(fmtStage(stage?.environment ?? promotion.baseBranch))}
           <Link href="/pipeline" className="ml-auto shrink-0 text-xs font-semibold underline">
             {copy.nav.pipeline}
           </Link>
@@ -59,6 +84,7 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
             <Chip key={c.name} chip={c} />
           ))}
         </div>
+        {!promotion.merged && <CheckHelp checks={promotion.checks} prNumber={promotion.number} />}
         {promotion.mergeable === false && (
           <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">{copy.pipeline.conflict}</p>
         )}
@@ -86,7 +112,7 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
       {!promotion.merged && (
       <PromoteButton
         prNumber={promotion.number}
-        label={copy.pipeline.promote(stage?.environment ?? promotion.baseBranch)}
+        label={copy.pipeline.promote(fmtStage(stage?.environment ?? promotion.baseBranch))}
         disabled={blocked}
         disabledReason={
           failing
@@ -105,5 +131,6 @@ export default async function PromotionPage({ params }: { params: Promise<{ numb
         </p>
       )}
     </div>
+    </PromotionStatusProvider>
   );
 }

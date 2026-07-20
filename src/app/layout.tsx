@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 };
 
 const nav = [
+  { href: "/my-changes", label: copy.nav.myChanges },
   { href: "/pipeline", label: copy.nav.pipeline },
   { href: "/deployments", label: copy.nav.deployments },
   { href: "/rollback", label: copy.nav.rollback },

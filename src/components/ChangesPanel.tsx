@@ -45,7 +45,9 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
   conflicted: boolean;
   flowDiffs?: Record<string, FlowDiffModel>;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Gearset/Copado model: ticked = "part of my change". Unticking marks a
+  // component as someone else's work; one button removes all unticked.
+  const [unticked, setUnticked] = useState<Set<string>>(new Set());
   const [sourceOrg, setSourceOrg] = useState(sourceOrgs[0]?.key ?? "INT");
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -62,7 +64,10 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
     startTransition(async () => {
       const r = await fn();
       setResult(r);
-      if (r.ok) setTimeout(() => router.refresh(), 4000);
+      if (r.ok) {
+        setUnticked(new Set());
+        setTimeout(() => router.refresh(), 4000);
+      }
     });
 
   const startPull = () =>
@@ -91,9 +96,10 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
     });
 
   const pulling = pull.phase === "running";
+  const justPulled = pull.phase === "done" && pull.ok && files.length > pull.hadFiles;
 
   const toggle = (f: string) =>
-    setSelected((s) => {
+    setUnticked((s) => {
       const next = new Set(s);
       if (next.has(f)) next.delete(f);
       else next.add(f);
@@ -139,7 +145,7 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
           <span>{copy.changes.pulling}</span>
           {pull.phase === "running" && pull.url && (
             <a href={pull.url} target="_blank" rel="noreferrer" className="ml-auto text-xs font-medium underline">
-              {copy.changes.openRun}
+              {copy.changes.openRun} ↗
             </a>
           )}
         </div>
@@ -155,13 +161,13 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
           <span>
             {!pull.ok
               ? copy.changes.pullFailed
-              : files.length > pull.hadFiles
-                ? copy.changes.pullDone
+              : justPulled
+                ? `${copy.changes.pullDone} ${copy.changes.pullReview}`
                 : copy.changes.pullNothing}
           </span>
           {pull.url && (
             <a href={pull.url} target="_blank" rel="noreferrer" className="ml-auto text-xs font-medium underline">
-              {copy.changes.openRun}
+              {copy.changes.openRun} ↗
             </a>
           )}
         </div>
@@ -170,54 +176,58 @@ export function ChangesPanel({ files, headBranch, baseBranch, sourceOrgs, prNumb
       {files.length === 0 ? (
         <p className="text-sm text-zinc-500">{copy.changes.empty}</p>
       ) : (
-        <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {files.map((f) => (
-            <li key={f.filename} className="py-2">
-              <div className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={selected.has(f.filename)}
-                  onChange={() => toggle(f.filename)}
-                  aria-label={`select ${f.filename}`}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm">
-                    <span className={`mr-1 ${statusDot[f.status] ?? "text-zinc-400"}`}>●</span>
-                    {f.summary}
+        <>
+          <p className="mb-1 text-xs text-zinc-400">{copy.changes.keepHint}</p>
+          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {files.map((f) => (
+              <li key={f.filename} className={`py-2 ${unticked.has(f.filename) ? "opacity-50" : ""}`}>
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={!unticked.has(f.filename)}
+                    onChange={() => toggle(f.filename)}
+                    aria-label={`part of this change: ${f.filename}`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm">
+                      <span className={`mr-1 ${statusDot[f.status] ?? "text-zinc-400"}`}>●</span>
+                      {f.summary}
+                    </div>
+                    <div className="truncate text-[11px] text-zinc-400">{f.filename}</div>
+                    {flowDiffs[f.filename] && (
+                      <details className="mt-1" open>
+                        <summary className="cursor-pointer text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                          {copy.changes.visualComparison}
+                        </summary>
+                        <FlowDiffViewer model={flowDiffs[f.filename]} />
+                      </details>
+                    )}
+                    {f.patch && (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                          {copy.changes.showDetails}
+                        </summary>
+                        <PatchView patch={f.patch} />
+                      </details>
+                    )}
                   </div>
-                  <div className="truncate text-[11px] text-zinc-400">{f.filename}</div>
-                  {flowDiffs[f.filename] && (
-                    <details className="mt-1" open>
-                      <summary className="cursor-pointer text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                        {copy.changes.visualComparison}
-                      </summary>
-                      <FlowDiffViewer model={flowDiffs[f.filename]} />
-                    </details>
-                  )}
-                  {f.patch && (
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                        {copy.changes.showDetails}
-                      </summary>
-                      <PatchView patch={f.patch} />
-                    </details>
-                  )}
                 </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {files.length > 0 && (
           <button
-            onClick={() => run(() => discardComponents(headBranch, baseBranch, [...selected]))}
-            disabled={pending || pulling || selected.size === 0}
+            onClick={() => run(() => discardComponents(headBranch, baseBranch, [...unticked]))}
+            disabled={pending || pulling || unticked.size === 0}
+            title={unticked.size === 0 ? copy.changes.allKept : undefined}
             className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
           >
-            {copy.changes.removeSelected(selected.size)}
+            {copy.changes.removeUnticked(unticked.size)}
           </button>
         )}
         {conflicted && (

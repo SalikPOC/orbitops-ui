@@ -1,5 +1,6 @@
 import type { ActiveRun } from "./data";
 import type { Promotion } from "./types";
+import { fmtStage } from "./format";
 
 /**
  * The pipeline board's triage strip: everything actionable or stuck, computed
@@ -41,16 +42,16 @@ export function buildAttention(
     if (run.status === "waiting") {
       items.push({
         severity: "act",
-        text: `A release to ${stage.environment} is waiting for release-manager approval (${age})`,
-        actionLabel: "Review on GitHub",
+        text: `A release to ${fmtStage(stage.environment)} is waiting for release-manager approval (${age})`,
+        actionLabel: "View progress",
         href: run.url,
         external: true,
       });
     } else if (now - new Date(run.startedAt).getTime() > STUCK_AFTER_MS) {
       items.push({
         severity: "warn",
-        text: `The release to ${stage.environment} has been running for ${age} — it may be stuck`,
-        actionLabel: "Open the run",
+        text: `The release to ${fmtStage(stage.environment)} has been running for ${age} — it may be stuck`,
+        actionLabel: "View progress",
         href: run.url,
         external: true,
       });
@@ -58,7 +59,7 @@ export function buildAttention(
   });
 
   for (const p of promotions) {
-    const env = stages.find((s) => s.branch === p.baseBranch)?.environment ?? p.baseBranch;
+    const env = fmtStage(stages.find((s) => s.branch === p.baseBranch)?.environment ?? p.baseBranch);
     const failing = p.checks.some((c) => c.status === "failure");
     const running = p.checks.some((c) => c.status === "pending");
     const label = p.workItems[0] ?? `#${p.number}`;

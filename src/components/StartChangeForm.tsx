@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { copy } from "@/lib/copy";
+import { fmtStage } from "@/lib/format";
 import { startChange, type ActionResult } from "@/lib/actions";
 
 const inputCls =
@@ -51,16 +52,22 @@ export function StartChangeForm({ stages }: { stages: { branch: string; environm
         />
         <p className="mt-1 text-xs text-zinc-500">{copy.startChange.descriptionHint}</p>
       </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium">{copy.startChange.stageLabel}</label>
-        <select name="sourceBranch" className={inputCls} defaultValue="integration">
-          {stages.map((s) => (
-            <option key={s.branch} value={s.branch} className="capitalize">
-              {s.environment}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* The first stage is right for virtually every change — tuck the
+          selector away so builders aren't asked a question they can't answer. */}
+      <details>
+        <summary className="cursor-pointer text-xs font-medium text-zinc-500">{copy.startChange.advanced}</summary>
+        <div className="mt-2">
+          <label className="mb-1 block text-sm font-medium">{copy.startChange.stageLabel}</label>
+          <select name="sourceBranch" className={inputCls} defaultValue={stages[0]?.branch ?? "integration"}>
+            {stages.map((s) => (
+              <option key={s.branch} value={s.branch}>
+                {fmtStage(s.environment)}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-zinc-500">{copy.startChange.stageHint}</p>
+        </div>
+      </details>
       <button
         disabled={pending}
         className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-700"
@@ -70,6 +77,7 @@ export function StartChangeForm({ stages }: { stages: { branch: string; environm
       {result && (
         <p className={`text-sm ${result.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
           {result.message}
+          {result.ok && <span className="mt-1 block text-zinc-500">{copy.startChange.afterSubmit}</span>}
         </p>
       )}
     </form>

@@ -1,4 +1,5 @@
 import { copy } from "@/lib/copy";
+import { fmtStage } from "@/lib/format";
 import { getDeployHistory, getPipeline } from "@/lib/data";
 import { getSessionUser } from "@/auth";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -37,13 +38,13 @@ export default async function RollbackPage({
           <a
             key={s.environment}
             href={`/rollback?env=${s.environment}`}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
               s.environment === env
                 ? "bg-indigo-600 text-white"
                 : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800"
             }`}
           >
-            {s.environment}
+            {fmtStage(s.environment)}
           </a>
         ))}
       </div>
@@ -56,7 +57,7 @@ export default async function RollbackPage({
 
       {history.length > 0 && (
         <div className="mt-8 text-xs text-zinc-400">
-          {copy.deployments.by} the numbers:{" "}
+          {copy.rollback.workItemsFooter}{" "}
           {history
             .flatMap((m) => m.workItems)
             .filter((v, i, a) => a.indexOf(v) === i)
