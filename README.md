@@ -3,8 +3,8 @@
 Citizen-developer release console for the [sf-pipeline](https://github.com/SalikPOC/sf-pipeline)
 Salesforce CI/CD PoC — a Copado/Gearset-familiar, DevOps-Center-like experience
 with no Git jargon anywhere. Pro-code developers don't need this app at all —
-they use plain Git/GitHub (see sf-pipeline's docs/DEVELOPER_GUIDE.md); both
-personas share one pipeline.
+they use plain Git/GitHub (see sf-pipeline's docs/RELEASE_CYCLE.md, which covers
+both the UI and the Git/GitHub paths); both personas share one pipeline.
 
 > AI assistants / coding agents: start at [AGENTS.md](AGENTS.md); the dated
 > decision log is [CLAUDE.md](CLAUDE.md).

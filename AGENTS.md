@@ -16,7 +16,7 @@ append, never rewrite. Human docs: [README.md](README.md),
 The web console for the OrbitOps Salesforce CI/CD platform (pipeline repo:
 `SalikPOC/sf-pipeline`). It serves **citizen developers** — Salesforce admins
 with no Git knowledge. Pro-code developers use plain GitHub instead
-(sf-pipeline's docs/DEVELOPER_GUIDE.md); every UI action is a wrapper over
+(sf-pipeline's docs/RELEASE_CYCLE.md); every UI action is a wrapper over
 Git/GitHub operations, so both paths interoperate on one pipeline.
 
 ## Architecture
